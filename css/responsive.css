@@ -1,0 +1,134 @@
+/* ==========================================================================
+   Responsive CSS: Mobile & Tablet Adaptations
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .hero-banner {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 1.75rem;
+  }
+
+  .deck-manager-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tree-sidebar {
+    max-height: 380px;
+  }
+}
+
+@media (max-width: 680px) {
+  .nav-container {
+    padding: 0 0.85rem;
+    height: 58px;
+  }
+
+  .brand-name {
+    font-size: 1.15rem;
+  }
+
+  .nav-menu {
+    gap: 0.25rem;
+  }
+
+  .nav-link {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.82rem;
+  }
+
+  .nav-actions {
+    gap: 0.4rem;
+  }
+
+  .app-main-viewport {
+    padding: 1rem 0.75rem 2.5rem;
+  }
+
+  .hero-title {
+    font-size: 1.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+  }
+
+  .stats-overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+
+  .classes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .group-detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.25rem;
+  }
+
+  .group-action-buttons {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .group-action-buttons .btn {
+    flex: 1;
+  }
+
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Study Arena Mobile */
+  .study-card-stage {
+    min-height: 380px;
+  }
+
+  .study-card-inner {
+    min-height: 380px;
+  }
+
+  .card-face {
+    padding: 1.25rem 1.25rem;
+  }
+
+  .study-text {
+    font-size: 1.15rem;
+  }
+
+  .answer-text-highlight {
+    font-size: 1.15rem;
+    padding: 0.85rem 1rem;
+  }
+
+  .anki-ratings-group {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .completion-card {
+    padding: 2rem 1.25rem;
+  }
+
+  .completion-title {
+    font-size: 1.7rem;
+  }
+
+  .completion-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

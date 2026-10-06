@@ -1,0 +1,369 @@
+/* ==========================================================================
+   Main CSS: Design Tokens, CSS Variables, Theme, Typography & App Layout
+   Warm, Natural Beige Aesthetic (Human-centered & Tactile Study Stationery)
+   ========================================================================== */
+
+:root {
+  /* Color Palette (Light Mode: Warm Oat / Parchment Beige & Natural Clay) */
+  --bg-primary: #f6f3eb;        /* Warm oatmeal paper canvas */
+  --bg-surface: #fdfbf7;        /* Clean warm ivory card surface */
+  --bg-surface-hover: #eee8dc;  /* Gentle warm hover */
+  --bg-card: #fdfbf7;           /* Card background */
+  --bg-subtle: #eee7db;         /* Subtle warm container/tag backdrop */
+
+  --border-color: #dfd7c8;      /* Soft natural linen border */
+  --border-focus: #c05638;      /* Terracotta accent focus ring */
+
+  --text-main: #2b2520;         /* Deep espresso / charcoal ink */
+  --text-muted: #6e655b;        /* Warm stone taupe */
+  --text-light: #9c9284;        /* Soft warm stone */
+
+  /* Earthy Accents */
+  --primary: #c05638;           /* Warm terracotta / rust clay */
+  --primary-hover: #a7452a;     /* Deeper baked clay */
+  --primary-light: #faeee7;     /* Soft terracotta wash */
+  --primary-text: #963a20;      /* Rich terracotta text */
+
+  --success: #38734e;           /* Garden sage / deep olive */
+  --success-hover: #2d5e3f;
+  --success-light: #eaf3ed;
+  --success-text: #225134;
+
+  --warning: #b87320;           /* Honey amber / warm ochre */
+  --warning-hover: #9c5f14;
+  --warning-light: #fdf3e5;
+  --warning-text: #7b4507;
+
+  --danger: #b83a3a;            /* Soft brick crimson */
+  --danger-hover: #9c2d2d;
+  --danger-light: #fbeeed;
+  --danger-text: #7c1f1f;
+
+  --info: #3d6884;              /* Slate river blue */
+  --info-light: #ecf3f8;
+
+  /* Ambient Natural Shadows (Soft, warm umber shadows instead of cyber glow) */
+  --shadow-sm: 0 1px 3px rgba(43, 37, 32, 0.05);
+  --shadow-md: 0 4px 10px -2px rgba(43, 37, 32, 0.07), 0 2px 4px -2px rgba(43, 37, 32, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(43, 37, 32, 0.08), 0 4px 8px -2px rgba(43, 37, 32, 0.03);
+  --shadow-xl: 0 20px 32px -6px rgba(43, 37, 32, 0.1);
+
+  /* Radii - Natural, comfortable curves */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* Typography: Humanist & Warm */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: 'Lora', Georgia, serif;
+  --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+}
+
+/* Dark Mode Tokens (Warm Night Study / Dark Walnut & Roasted Espresso) */
+[data-theme="dark"] {
+  --bg-primary: #191715;        /* Deep roasted coffee bean */
+  --bg-surface: #23201c;        /* Warm dark wood card */
+  --bg-surface-hover: #2c2823;
+  --bg-card: #23201c;
+  --bg-subtle: #2b2722;
+
+  --border-color: #38322b;      /* Muted espresso timber border */
+  --border-focus: #e27a56;
+
+  --text-main: #f3efe6;         /* Warm ivory text */
+  --text-muted: #aca294;        /* Soft warm taupe */
+  --text-light: #7a7164;
+
+  --primary: #e07a57;           /* Warm peach terracotta */
+  --primary-hover: #eb8d6b;
+  --primary-light: #39241b;
+  --primary-text: #f7c2b2;
+
+  --success: #52996d;
+  --success-hover: #63aa7e;
+  --success-light: #1f3024;
+  --success-text: #a0dcba;
+
+  --warning: #d99436;
+  --warning-hover: #e5a448;
+  --warning-light: #3a2811;
+  --warning-text: #fad698;
+
+  --danger: #d95858;
+  --danger-hover: #e56b6b;
+  --danger-light: #381919;
+  --danger-text: #fca5a5;
+
+  --info: #5d91b4;
+  --info-light: #1b2b38;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 36px rgba(0, 0, 0, 0.65);
+}
+
+/* ==========================================================================
+   User Selectable Accent Themes (Orange, Blue, Green, Pink, Yellow, Red, Purple)
+   Works in both Light (Beige) and Dark (Night) modes
+   ========================================================================== */
+
+/* 1. Orange / Terracotta (Default) */
+[data-accent="orange"],
+:root:not([data-accent]) {
+  --primary: #c05638;
+  --primary-hover: #a7452a;
+  --primary-light: #faeee7;
+  --primary-text: #963a20;
+  --border-focus: #c05638;
+}
+[data-theme="dark"][data-accent="orange"],
+[data-theme="dark"]:not([data-accent]) {
+  --primary: #e07a57;
+  --primary-hover: #eb8d6b;
+  --primary-light: #39241b;
+  --primary-text: #f7c2b2;
+  --border-focus: #e27a56;
+}
+
+/* 2. Green / Sage & Forest */
+[data-accent="green"] {
+  --primary: #38734e;
+  --primary-hover: #2d5e3f;
+  --primary-light: #eaf3ed;
+  --primary-text: #225134;
+  --border-focus: #38734e;
+}
+[data-theme="dark"][data-accent="green"] {
+  --primary: #52996d;
+  --primary-hover: #63aa7e;
+  --primary-light: #1f3024;
+  --primary-text: #a0dcba;
+  --border-focus: #52996d;
+}
+
+/* 3. Blue / River Slate & Denim */
+[data-accent="blue"] {
+  --primary: #366482;
+  --primary-hover: #2b5069;
+  --primary-light: #e9f1f6;
+  --primary-text: #1e445d;
+  --border-focus: #366482;
+}
+[data-theme="dark"][data-accent="blue"] {
+  --primary: #548bb0;
+  --primary-hover: #659cc2;
+  --primary-light: #1c2a35;
+  --primary-text: #a4cbdf;
+  --border-focus: #548bb0;
+}
+
+/* 4. Pink / Dusty Rose & Blush */
+[data-accent="pink"] {
+  --primary: #b84e72;
+  --primary-hover: #9e3f60;
+  --primary-light: #faeef3;
+  --primary-text: #8e3152;
+  --border-focus: #b84e72;
+}
+[data-theme="dark"][data-accent="pink"] {
+  --primary: #d96b92;
+  --primary-hover: #e47d9f;
+  --primary-light: #381d28;
+  --primary-text: #f8bad0;
+  --border-focus: #d96b92;
+}
+
+/* 5. Yellow / Golden Amber & Honey Ochre */
+[data-accent="yellow"] {
+  --primary: #b87320;
+  --primary-hover: #9c5f14;
+  --primary-light: #fdf3e5;
+  --primary-text: #7b4507;
+  --border-focus: #b87320;
+}
+[data-theme="dark"][data-accent="yellow"] {
+  --primary: #d99436;
+  --primary-hover: #e5a448;
+  --primary-light: #3a2811;
+  --primary-text: #fad698;
+  --border-focus: #d99436;
+}
+
+/* 6. Red / Crimson Brick */
+[data-accent="red"] {
+  --primary: #b83a3a;
+  --primary-hover: #9c2d2d;
+  --primary-light: #fbeeed;
+  --primary-text: #7c1f1f;
+  --border-focus: #b83a3a;
+}
+[data-theme="dark"][data-accent="red"] {
+  --primary: #d95858;
+  --primary-hover: #e56b6b;
+  --primary-light: #381919;
+  --primary-text: #fca5a5;
+  --border-focus: #d95858;
+}
+
+/* 7. Purple / Warm Plum & Violet */
+[data-accent="purple"] {
+  --primary: #7d4e8d;
+  --primary-hover: #693f77;
+  --primary-light: #f6eefa;
+  --primary-text: #5b3269;
+  --border-focus: #7d4e8d;
+}
+[data-theme="dark"][data-accent="purple"] {
+  --primary: #a871b8;
+  --primary-hover: #b882c7;
+  --primary-light: #311f38;
+  --primary-text: #e2c2eb;
+  --border-focus: #a871b8;
+}
+
+/* Base Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App Header & Navbar */
+.app-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
+}
+
+.nav-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background-color: var(--primary);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(192, 86, 56, 0.25);
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.brand-accent {
+  color: var(--primary);
+}
+
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nav-link:hover {
+  color: var(--text-main);
+  background-color: var(--bg-subtle);
+}
+
+.nav-link.active {
+  color: var(--primary);
+  background-color: var(--primary-light);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* App Viewport */
+.app-main-viewport {
+  flex: 1;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+/* Utility Animations */
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.hidden {
+  display: none !important;
+}

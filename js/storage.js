@@ -1,0 +1,572 @@
+/**
+ * Storage Service
+ * High-capacity IndexedDB storage with fallback to localStorage.
+ * Handles cards, hierarchical groups, settings, review history, and JSON Import/Export.
+ */
+
+import { getSampleData, createDefaultSettings, getGeneralKnowledgeData } from './models.js';
+
+const DB_NAME = 'FlashCardsDB';
+const DB_VERSION = 1;
+
+class StorageService {
+  constructor() {
+    this.db = null;
+    this.isIndexedDBAvailable = typeof indexedDB !== 'undefined';
+  }
+
+  async init() {
+    if (!this.isIndexedDBAvailable) {
+      console.warn('IndexedDB not available, falling back to localStorage');
+      this._initLocalStorage();
+      return;
+    }
+
+    try {
+      this.db = await this._openDB();
+      // Check if DB is empty, if so seed sample data
+      const cards = await this.getCards();
+      if (cards.length === 0) {
+        await this.seedInitialData();
+      } else {
+        // Upgrade check: Ensure General Knowledge deck is present
+        const gkGroup = await this.getGroup('grp_gk');
+        if (!gkGroup) {
+          const { gkGroups, gkCards } = getGeneralKnowledgeData();
+          for (const g of gkGroups) {
+            await this.saveGroup(g);
+          }
+          for (const c of gkCards) {
+            await this.saveCard(c);
+          }
+          // Set grp_gk in focus if not already focused or if focused list is empty
+          const settings = await this.getSettings();
+          const focused = Array.isArray(settings.focusedGroupIds) ? [...settings.focusedGroupIds] : [];
+          if (!focused.includes('grp_gk')) {
+            focused.unshift('grp_gk');
+            settings.focusedGroupIds = focused;
+            await this.saveSettings(settings);
+          }
+        } else {
+          // Ensure any unreviewed General Knowledge cards start as clean unlearned cards
+          const allLogs = await this.getReviewLogs();
+          const loggedCardIds = new Set((allLogs || []).map(l => l.cardId));
+          const todayStr = new Date().toISOString().split('T')[0];
+          const unreviewedGk = cards.filter(c => c.id && c.id.startsWith('card_gk_') && !loggedCardIds.has(c.id));
+          for (const c of unreviewedGk) {
+            if (c.srs && (c.srs.state !== 'new' || c.srs.interval !== 0)) {
+              c.srs = {
+                state: 'new',
+                interval: 0,
+                easeFactor: 2.5,
+                reps: 0,
+                lapses: 0,
+                dueDate: todayStr,
+                lastReviewed: null
+              };
+              await this.saveCard(c);
+            }
+          }
+        }
+      }
+
+      // Request persistent storage protection against browser eviction
+      await this.requestPersistence();
+    } catch (err) {
+      console.error('Failed to initialize IndexedDB, falling back to localStorage:', err);
+      this.isIndexedDBAvailable = false;
+      this._initLocalStorage();
+    }
+  }
+
+  async requestPersistence() {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+      try {
+        const isPersisted = await navigator.storage.persist();
+        console.log(`[Storage] Persistent storage active: ${isPersisted}`);
+        return isPersisted;
+      } catch (e) {
+        console.warn('[Storage] Persistence request warning:', e);
+      }
+    }
+    return false;
+  }
+
+  async getStorageEstimate() {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const usageMB = Math.round((estimate.usage || 0) / (1024 * 1024) * 10) / 10;
+        const quotaMB = Math.round((estimate.quota || 0) / (1024 * 1024));
+        return {
+          usageBytes: estimate.usage || 0,
+          quotaBytes: estimate.quota || 0,
+          usageMB,
+          quotaMB,
+          percent: estimate.quota ? Math.round((estimate.usage / estimate.quota) * 100) : 0
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  _openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('cards')) {
+          const cardStore = db.createObjectStore('cards', { keyPath: 'id' });
+          cardStore.createIndex('groupId', 'groupId', { unique: false });
+          cardStore.createIndex('type', 'type', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('groups')) {
+          const groupStore = db.createObjectStore('groups', { keyPath: 'id' });
+          groupStore.createIndex('parentId', 'parentId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains('reviews')) {
+          const reviewStore = db.createObjectStore('reviews', { keyPath: 'id', autoIncrement: true });
+          reviewStore.createIndex('cardId', 'cardId', { unique: false });
+          reviewStore.createIndex('date', 'date', { unique: false });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async seedInitialData() {
+    const { groups, cards } = getSampleData();
+    for (const g of groups) {
+      await this.saveGroup(g);
+    }
+    for (const c of cards) {
+      await this.saveCard(c);
+    }
+    await this.saveSettings(createDefaultSettings());
+  }
+
+  // --- Cards API ---
+  async getCards(groupId = null, includeSubgroups = false) {
+    if (!this.isIndexedDBAvailable) {
+      return this._lsGetCards(groupId, includeSubgroups);
+    }
+    const all = await this._getAllFromStore('cards');
+    if (!groupId) return all;
+
+    if (!includeSubgroups) {
+      return all.filter(c => c.groupId === groupId);
+    }
+
+    const groupIds = await this.getSubgroupIds(groupId);
+    groupIds.add(groupId);
+    return all.filter(c => groupIds.has(c.groupId));
+  }
+
+  async getCard(id) {
+    if (!this.isIndexedDBAvailable) return this._lsGetCard(id);
+    return this._getByKey('cards', id);
+  }
+
+  async saveCard(card) {
+    if (!this.isIndexedDBAvailable) return this._lsSaveCard(card);
+    card.updatedAt = new Date().toISOString();
+    return this._putInStore('cards', card);
+  }
+
+  async deleteCard(id) {
+    if (!this.isIndexedDBAvailable) return this._lsDeleteCard(id);
+    return this._deleteFromStore('cards', id);
+  }
+
+  // --- Groups API ---
+  async getGroups() {
+    if (!this.isIndexedDBAvailable) return this._lsGetGroups();
+    return this._getAllFromStore('groups');
+  }
+
+  async getGroup(id) {
+    if (!this.isIndexedDBAvailable) return this._lsGetGroup(id);
+    return this._getByKey('groups', id);
+  }
+
+  async saveGroup(group) {
+    if (!this.isIndexedDBAvailable) return this._lsSaveGroup(group);
+    return this._putInStore('groups', group);
+  }
+
+  async deleteGroup(id, deleteCards = true) {
+    const subgroupIds = await this.getSubgroupIds(id);
+    const allTargetGroupIds = new Set([id, ...subgroupIds]);
+
+    if (!this.isIndexedDBAvailable) {
+      this._lsDeleteGroups(allTargetGroupIds, deleteCards);
+      return;
+    }
+
+    // Delete groups
+    for (const gId of allTargetGroupIds) {
+      await this._deleteFromStore('groups', gId);
+    }
+
+    // Delete or unassign associated cards
+    const allCards = await this.getCards();
+    for (const card of allCards) {
+      if (allTargetGroupIds.has(card.groupId)) {
+        if (deleteCards) {
+          await this.deleteCard(card.id);
+        } else {
+          card.groupId = null;
+          await this.saveCard(card);
+        }
+      }
+    }
+  }
+
+  async getSubgroupIds(groupId) {
+    const groups = await this.getGroups();
+    const result = new Set();
+    const findChildren = (parentId) => {
+      for (const g of groups) {
+        if (g.parentId === parentId && !result.has(g.id)) {
+          result.add(g.id);
+          findChildren(g.id);
+        }
+      }
+    };
+    findChildren(groupId);
+    return result;
+  }
+
+  // --- Settings API ---
+  async getSettings() {
+    if (!this.isIndexedDBAvailable) return this._lsGetSettings();
+    const res = await this._getByKey('settings', 'user_settings');
+    return res ? res.value : createDefaultSettings();
+  }
+
+  async saveSettings(settings) {
+    if (!this.isIndexedDBAvailable) return this._lsSaveSettings(settings);
+    return this._putInStore('settings', { key: 'user_settings', value: settings });
+  }
+
+  // --- Review Logging ---
+  async logReview(cardId, rating, oldSrs, newSrs) {
+    const log = {
+      cardId,
+      rating,
+      date: new Date().toISOString().split('T')[0],
+      timestamp: new Date().toISOString(),
+      oldInterval: oldSrs ? oldSrs.interval : 0,
+      newInterval: newSrs ? newSrs.interval : 0
+    };
+
+    if (this.isIndexedDBAvailable) {
+      await this._putInStore('reviews', log);
+    } else {
+      const logs = JSON.parse(localStorage.getItem('fc_reviews') || '[]');
+      logs.push(log);
+      localStorage.setItem('fc_reviews', JSON.stringify(logs));
+    }
+
+    // Update settings daily count and streak
+    const settings = await this.getSettings();
+    const today = new Date().toISOString().split('T')[0];
+    
+    if (settings.lastActiveDate !== today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      
+      if (settings.lastActiveDate === yesterdayStr) {
+        settings.streak = (settings.streak || 0) + 1;
+      } else {
+        settings.streak = 1;
+      }
+      settings.lastActiveDate = today;
+      settings.cardsReviewedToday = 1;
+    } else {
+      settings.cardsReviewedToday = (settings.cardsReviewedToday || 0) + 1;
+    }
+    await this.saveSettings(settings);
+  }
+
+  async getReviewLogs() {
+    let logs = [];
+    if (!this.isIndexedDBAvailable) {
+      logs = JSON.parse(localStorage.getItem('fc_reviews') || '[]');
+    } else {
+      logs = await this._getAllFromStore('reviews');
+    }
+
+    if (logs.length === 0) {
+      const demoLogs = this._createDemoReviewLogs();
+      for (const log of demoLogs) {
+        if (this.isIndexedDBAvailable) {
+          await this._putInStore('reviews', log);
+        }
+      }
+      if (!this.isIndexedDBAvailable) {
+        localStorage.setItem('fc_reviews', JSON.stringify(demoLogs));
+      }
+      return demoLogs;
+    }
+
+    return logs;
+  }
+
+  _createDemoReviewLogs() {
+    const now = new Date();
+    const getDateBefore = (daysAgo) => {
+      const d = new Date(now);
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString().split('T')[0];
+    };
+    return [
+      { cardId: 'card_gk_021', rating: 3, date: getDateBefore(4), timestamp: new Date(now - 4 * 86400000).toISOString(), oldInterval: 0, newInterval: 1 },
+      { cardId: 'card_gk_022', rating: 4, date: getDateBefore(4), timestamp: new Date(now - 4 * 86400000).toISOString(), oldInterval: 0, newInterval: 1 },
+      { cardId: 'card_gk_036', rating: 3, date: getDateBefore(3), timestamp: new Date(now - 3 * 86400000).toISOString(), oldInterval: 0, newInterval: 2 },
+      { cardId: 'card_gk_037', rating: 3, date: getDateBefore(3), timestamp: new Date(now - 3 * 86400000).toISOString(), oldInterval: 0, newInterval: 2 },
+      { cardId: 'card_gk_049', rating: 3, date: getDateBefore(2), timestamp: new Date(now - 2 * 86400000).toISOString(), oldInterval: 0, newInterval: 3 },
+      { cardId: 'card_gk_050', rating: 4, date: getDateBefore(2), timestamp: new Date(now - 2 * 86400000).toISOString(), oldInterval: 0, newInterval: 3 },
+      { cardId: 'card_gk_061', rating: 3, date: getDateBefore(1), timestamp: new Date(now - 1 * 86400000).toISOString(), oldInterval: 0, newInterval: 5 },
+      { cardId: 'card_gk_062', rating: 3, date: getDateBefore(1), timestamp: new Date(now - 1 * 86400000).toISOString(), oldInterval: 0, newInterval: 5 },
+      { cardId: 'card_demo_1', rating: 3, date: getDateBefore(4), timestamp: new Date(now - 4 * 86400000).toISOString(), oldInterval: 0, newInterval: 1 },
+      { cardId: 'card_demo_2', rating: 3, date: getDateBefore(3), timestamp: new Date(now - 3 * 86400000).toISOString(), oldInterval: 0, newInterval: 1 },
+      { cardId: 'card_demo_1', rating: 3, date: getDateBefore(3), timestamp: new Date(now - 3 * 86400000).toISOString(), oldInterval: 1, newInterval: 3 },
+      { cardId: 'card_demo_3', rating: 4, date: getDateBefore(2), timestamp: new Date(now - 2 * 86400000).toISOString(), oldInterval: 0, newInterval: 4 },
+      { cardId: 'card_demo_4', rating: 3, date: getDateBefore(1), timestamp: new Date(now - 1 * 86400000).toISOString(), oldInterval: 0, newInterval: 1 },
+      { cardId: 'card_demo_2', rating: 3, date: getDateBefore(1), timestamp: new Date(now - 1 * 86400000).toISOString(), oldInterval: 1, newInterval: 3 }
+    ];
+  }
+
+  // --- Import / Export ---
+  async exportData(targetGroupId = null) {
+    const allGroups = await this.getGroups();
+    const allCards = await this.getCards();
+    const settings = await this.getSettings();
+
+    let exportGroups = allGroups;
+    let exportCards = allCards;
+
+    if (targetGroupId) {
+      const subgroupIds = await this.getSubgroupIds(targetGroupId);
+      const targetIds = new Set([targetGroupId, ...subgroupIds]);
+      exportGroups = allGroups.filter(g => targetIds.has(g.id));
+      exportCards = allCards.filter(c => targetIds.has(c.groupId));
+    }
+
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      targetGroupId,
+      groups: exportGroups,
+      cards: exportCards,
+      settings: targetGroupId ? undefined : settings
+    };
+  }
+
+  async importData(data, mode = 'merge') {
+    if (!data || !Array.isArray(data.cards) || !Array.isArray(data.groups)) {
+      throw new Error('Invalid backup file format.');
+    }
+
+    if (mode === 'replace') {
+      await this.clearAll();
+    }
+
+    const existingGroups = await this.getGroups();
+    const existingGroupMap = new Map(existingGroups.map(g => [g.id, g]));
+
+    for (const g of data.groups) {
+      if (mode === 'merge' && existingGroupMap.has(g.id)) {
+        // Keep or overwrite existing
+        await this.saveGroup({ ...existingGroupMap.get(g.id), ...g });
+      } else {
+        await this.saveGroup(g);
+      }
+    }
+
+    const existingCards = await this.getCards();
+    const existingCardMap = new Map(existingCards.map(c => [c.id, c]));
+
+    for (const c of data.cards) {
+      if (mode === 'merge' && existingCardMap.has(c.id)) {
+        await this.saveCard({ ...existingCardMap.get(c.id), ...c });
+      } else {
+        await this.saveCard(c);
+      }
+    }
+
+    if (data.settings && mode === 'replace') {
+      await this.saveSettings(data.settings);
+    }
+
+    return {
+      groupsCount: data.groups.length,
+      cardsCount: data.cards.length
+    };
+  }
+
+  async clearAll() {
+    if (this.isIndexedDBAvailable) {
+      await this._clearStore('cards');
+      await this._clearStore('groups');
+      await this._clearStore('reviews');
+    } else {
+      localStorage.removeItem('fc_cards');
+      localStorage.removeItem('fc_groups');
+      localStorage.removeItem('fc_reviews');
+    }
+  }
+
+  // --- IndexedDB generic helpers ---
+  _getAllFromStore(storeName) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  _getByKey(storeName, key) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  _putInStore(storeName, item) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.put(item);
+      req.onsuccess = () => resolve(item);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  _deleteFromStore(storeName, key) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.delete(key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  _clearStore(storeName) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // --- LocalStorage fallbacks ---
+  _initLocalStorage() {
+    if (!localStorage.getItem('fc_cards')) {
+      const { groups, cards } = getSampleData();
+      localStorage.setItem('fc_groups', JSON.stringify(groups));
+      localStorage.setItem('fc_cards', JSON.stringify(cards));
+      localStorage.setItem('fc_settings', JSON.stringify(createDefaultSettings()));
+    } else {
+      const groups = JSON.parse(localStorage.getItem('fc_groups') || '[]');
+      if (!groups.some(g => g.id === 'grp_gk')) {
+        const { gkGroups, gkCards } = getGeneralKnowledgeData();
+        const cards = JSON.parse(localStorage.getItem('fc_cards') || '[]');
+        const settings = JSON.parse(localStorage.getItem('fc_settings') || '{}');
+        localStorage.setItem('fc_groups', JSON.stringify([...gkGroups, ...groups]));
+        localStorage.setItem('fc_cards', JSON.stringify([...gkCards, ...cards]));
+        const focused = Array.isArray(settings.focusedGroupIds) ? [...settings.focusedGroupIds] : [];
+        if (!focused.includes('grp_gk')) {
+          focused.unshift('grp_gk');
+          settings.focusedGroupIds = focused;
+        }
+        localStorage.setItem('fc_settings', JSON.stringify(settings));
+      }
+    }
+  }
+
+  _lsGetCards() {
+    return JSON.parse(localStorage.getItem('fc_cards') || '[]');
+  }
+
+  _lsGetCard(id) {
+    const cards = this._lsGetCards();
+    return cards.find(c => c.id === id) || null;
+  }
+
+  _lsSaveCard(card) {
+    const cards = this._lsGetCards();
+    const idx = cards.findIndex(c => c.id === card.id);
+    if (idx >= 0) {
+      cards[idx] = card;
+    } else {
+      cards.push(card);
+    }
+    localStorage.setItem('fc_cards', JSON.stringify(cards));
+    return card;
+  }
+
+  _lsDeleteCard(id) {
+    const cards = this._lsGetCards().filter(c => c.id !== id);
+    localStorage.setItem('fc_cards', JSON.stringify(cards));
+    return true;
+  }
+
+  _lsGetGroups() {
+    return JSON.parse(localStorage.getItem('fc_groups') || '[]');
+  }
+
+  _lsGetGroup(id) {
+    return this._lsGetGroups().find(g => g.id === id) || null;
+  }
+
+  _lsSaveGroup(group) {
+    const groups = this._lsGetGroups();
+    const idx = groups.findIndex(g => g.id === group.id);
+    if (idx >= 0) {
+      groups[idx] = group;
+    } else {
+      groups.push(group);
+    }
+    localStorage.setItem('fc_groups', JSON.stringify(groups));
+    return group;
+  }
+
+  _lsDeleteGroups(targetGroupIds, deleteCards) {
+    const groups = this._lsGetGroups().filter(g => !targetGroupIds.has(g.id));
+    localStorage.setItem('fc_groups', JSON.stringify(groups));
+    if (deleteCards) {
+      const cards = this._lsGetCards().filter(c => !targetGroupIds.has(c.groupId));
+      localStorage.setItem('fc_cards', JSON.stringify(cards));
+    }
+  }
+
+  _lsGetSettings() {
+    return JSON.parse(localStorage.getItem('fc_settings') || 'null') || createDefaultSettings();
+  }
+
+  _lsSaveSettings(settings) {
+    localStorage.setItem('fc_settings', JSON.stringify(settings));
+    return settings;
+  }
+}
+
+export const storage = new StorageService();

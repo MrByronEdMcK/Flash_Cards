@@ -346,9 +346,10 @@ export function parseImport(rawText, serviceId = 'auto', options = {}) {
   if (options && options.deckName && (!result.deckName || result.deckName.includes('Deck'))) {
     result.deckName = options.deckName;
   } else if (filename) {
-    const cleanName = filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ').trim();
+    const baseName = filename.split(/[\\/]/).pop() || filename;
+    const cleanName = baseName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ').trim();
     if (cleanName && (!result.deckName || result.deckName === 'Imported Deck')) {
-      result.deckName = cleanName;
+      result.deckName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
     }
   }
 

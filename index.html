@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StudyCards - Smart Spaced Repetition Flashcards</title>
+  <title>StudyCards | Spaced Repetition Flashcards</title>
   <meta name="description" content="A clean, student-friendly flashcard app with spaced repetition, image occlusion, cloze deletions, and hierarchical deck organization." />
 
   <!-- PWA Manifest & App Icons -->
@@ -40,13 +40,14 @@
       </div>
 
       <nav class="nav-menu">
-        <button class="nav-link active" data-view="dashboard">
+        <button class="nav-link active" data-view="dashboard" title="Dashboard">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
-          Dashboard
+          <span class="nav-link-text">Dashboard</span>
         </button>
-        <button class="nav-link" data-view="decks">
+        <button class="nav-link" data-view="decks" title="Folders & Decks">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-          Folders & Decks
+          <span class="nav-link-text">Folders &amp; Decks</span>
+          <span class="nav-link-short">Decks</span>
         </button>
       </nav>
 

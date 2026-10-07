@@ -32,7 +32,7 @@ export class ModalManager {
     el.innerHTML = `
       <div class="modal-window animate-scale-up">
         <div class="modal-header">
-          <h3 id="group-modal-title">New Folder / Subject</h3>
+          <h3 id="group-modal-title">New Folder / Deck</h3>
           <button class="btn-close" id="btn-close-group-modal">&times;</button>
         </div>
         <div class="modal-body">
@@ -44,13 +44,13 @@ export class ModalManager {
 
             <div class="form-row-2">
               <div class="form-group">
-                <label class="form-label" for="select-group-type">Hierarchy Level</label>
+                <label class="form-label" for="select-group-type">Folder / Deck Level</label>
                 <select class="form-input" id="select-group-type">
-                  <option value="${GROUP_TYPES.CLASS}">Class / Subject (Root)</option>
+                  <option value="${GROUP_TYPES.CLASS}">Class / Subject (Main Level)</option>
                   <option value="${GROUP_TYPES.UNIT}">Unit</option>
                   <option value="${GROUP_TYPES.LESSON}">Lesson</option>
                   <option value="${GROUP_TYPES.CONCEPT}">Concept</option>
-                  <option value="${GROUP_TYPES.CUSTOM}">Custom Folder</option>
+                  <option value="${GROUP_TYPES.CUSTOM}">Custom Deck</option>
                 </select>
               </div>
 
@@ -135,13 +135,13 @@ export class ModalManager {
 
     if (this.editingGroupId) {
       const g = await storage.getGroup(this.editingGroupId);
-      titleEl.textContent = 'Edit Folder';
+      titleEl.textContent = 'Edit Folder / Deck';
       nameInput.value = g.name;
       typeSelect.value = g.type || GROUP_TYPES.CUSTOM;
       colorInput.value = g.color || '#c05638';
       parentSelect.value = g.parentId || '';
     } else {
-      titleEl.textContent = 'New Folder / Subject';
+      titleEl.textContent = 'New Folder / Deck';
       nameInput.value = '';
       colorInput.value = '#c05638';
       if (parentId) {
@@ -533,10 +533,11 @@ export class ModalManager {
 
     const handleSelectedFile = (file) => {
       currentFileName = file.name;
-      fileLabel.textContent = `Selected: ${file.name} (${Math.round(file.size / 1024 * 10) / 10} KB)`;
+      const baseName = (file.name || '').split(/[\\/]/).pop() || '';
+      fileLabel.textContent = `Selected: ${baseName} (${Math.round(file.size / 1024 * 10) / 10} KB)`;
 
-      // Pre-fill deck name if clean
-      const stem = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ').trim();
+      // Pre-fill deck name cleanly (strip extension and path)
+      const stem = baseName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ').trim();
       if (stem && (!inputDeckName.value || inputDeckName.dataset.autoFilled)) {
         inputDeckName.value = stem.charAt(0).toUpperCase() + stem.slice(1);
         inputDeckName.dataset.autoFilled = 'true';

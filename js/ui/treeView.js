@@ -104,7 +104,7 @@ export class TreeView {
         <aside class="tree-sidebar">
           <div class="tree-sidebar-header">
             <div>
-              <h3>Folder Hierarchy</h3>
+              <h3>Folders &amp; Decks</h3>
               <span class="tree-header-hint" style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 2px;">
                 Drag &amp; drop to reorganise
               </span>
@@ -134,7 +134,7 @@ export class TreeView {
         <main class="tree-main-content">
           ${activeGroup ? this._renderActiveGroupHeader(activeGroup, cardCounts, dueCounts) : `
             <div class="empty-selection-placeholder">
-              <h3>Select a group from the left to view cards and start studying.</h3>
+              <h3>Select a deck or folder from the left to view cards and start studying.</h3>
             </div>
           `}
 
@@ -142,10 +142,10 @@ export class TreeView {
           <div class="cards-list-section">
             <div class="cards-list-header">
               <div>
-                <h4>Cards in this folder (${countBadgeText})</h4>
+                <h4>Cards in this deck (${countBadgeText})</h4>
                 ${subgroupCardsMap.size > 0 ? `
                   <p class="cards-list-subtitle" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
-                    Showing cards from this folder and all nested sub-folders.
+                    Showing cards from this deck and all nested sub-folders.
                   </p>
                 ` : ''}
               </div>
@@ -193,7 +193,7 @@ export class TreeView {
                 </button>
                 
                 <div class="tree-node-title" data-select-id="${node.id}">
-                  <span class="tree-type-pill pill-${node.type || 'custom'}">${(node.type || 'group').toUpperCase()}</span>
+                  <span class="tree-type-pill pill-${node.type || 'custom'}">${(node.type || 'deck').toUpperCase()}</span>
                   <span class="tree-node-name">${escapeHtml(node.name)}</span>
                 </div>
 
@@ -218,7 +218,7 @@ export class TreeView {
     return `
       <div class="group-detail-header">
         <div class="group-detail-meta">
-          <span class="group-tag-type">${(group.type || 'group').toUpperCase()}</span>
+          <span class="group-tag-type">${(group.type || 'deck').toUpperCase()}</span>
           <h2 class="group-title">${escapeHtml(group.name)}</h2>
           <div class="group-counts">
             <span><strong>${totalCards}</strong> total cards (including sub-folders)</span>
@@ -241,11 +241,11 @@ export class TreeView {
             <button class="btn btn-secondary btn-icon" id="btn-group-more" title="More Options">⚙️</button>
             <div class="dropdown-menu" id="group-more-menu">
               <button class="dropdown-item" id="btn-add-subgroup">+ Add Sub-level (${this._getNextLevelName(group.type)})</button>
-              <button class="dropdown-item" id="btn-export-group">📤 Export Folder (JSON)</button>
+              <button class="dropdown-item" id="btn-export-group">📤 Export Deck (JSON)</button>
               <button class="dropdown-item" id="btn-edit-group">✏️ Rename / Edit</button>
               <div class="dropdown-divider"></div>
-              <button class="dropdown-item text-warning" id="btn-reset-group-progress">🔄 Reset Review Progress</button>
-              <button class="dropdown-item text-danger" id="btn-delete-group">🗑️ Delete Folder</button>
+              <button class="dropdown-item text-warning" id="btn-reset-group-progress">🔄 Reset Review Data</button>
+              <button class="dropdown-item text-danger" id="btn-delete-group">🗑️ Delete Deck / Folder</button>
             </div>
           </div>
         </div>
@@ -257,7 +257,7 @@ export class TreeView {
     if (type === 'class') return 'Unit';
     if (type === 'unit') return 'Lesson';
     if (type === 'lesson') return 'Concept';
-    return 'Sub-group';
+    return 'Sub-deck';
   }
 
   _renderCardItem(card) {

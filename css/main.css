@@ -233,6 +233,11 @@
   padding: 0;
 }
 
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--bg-primary);
@@ -328,6 +333,10 @@ body {
 .nav-link.active {
   color: var(--primary);
   background-color: var(--primary-light);
+}
+
+.nav-link-short {
+  display: none;
 }
 
 .nav-actions {

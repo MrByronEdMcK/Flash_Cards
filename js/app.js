@@ -57,12 +57,15 @@ class FlashcardApp {
     });
 
     if (view === 'dashboard') {
+      document.title = 'Dashboard | StudyCards';
       if (this.studyView) this.studyView.destroy();
       await renderDashboard(this.mainContainer, (v, o) => this.navigate(v, o));
     } else if (view === 'decks') {
+      document.title = 'Folders & Decks | StudyCards';
       if (this.studyView) this.studyView.destroy();
       await this.treeView.render(options);
     } else if (view === 'study') {
+      if (this.studyView) this.studyView.destroy();
       await this.studyView.start(options);
     }
   }

@@ -107,6 +107,16 @@ export class StudyView {
       }
     };
 
+    if (this.session.isNoFocusDaily) {
+      document.title = 'Daily Review | StudyCards';
+    } else if (this.session.isCappedOutEndless) {
+      document.title = 'Endless Practice | StudyCards';
+    } else {
+      const cleanName = (this.session.groupName || '').replace('🎯 Focus: ', '').replace(/^[^\w\s]+/, '').trim();
+      const prefix = this.session.mode === 'endless' ? 'Practice' : 'Review';
+      document.title = cleanName ? `${prefix}: ${cleanName} | StudyCards` : `${prefix} | StudyCards`;
+    }
+
     this._renderCurrentCard();
     this._attachKeyListeners();
   }
@@ -591,6 +601,7 @@ export class StudyView {
 
   _renderCompletion() {
     this.destroy();
+    document.title = 'Session Complete | StudyCards';
 
     // 1. No Focus Set (Daily Mode)
     if (this.session && this.session.isNoFocusDaily) {

@@ -427,7 +427,7 @@ export async function renderDashboard(container, navigateTo) {
             <p class="section-subtitle">Click "🎯 Focus" to set any class in focus for your daily review.</p>
           </div>
           <button class="btn btn-outline btn-sm" id="btn-view-all-decks">
-            Explore All Folders &rarr;
+            View Folders &amp; Decks &rarr;
           </button>
         </div>
 

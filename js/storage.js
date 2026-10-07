@@ -26,6 +26,8 @@ class StorageService {
       this.db = await this._openDB();
       // Purge any legacy demo review logs from previous sessions
       await this._purgeDemoReviewLogs();
+      // Purge legacy Biology and Spanish demo decks
+      await this._purgeLegacyDemoDecks();
 
       // Check if DB is empty, if so seed sample data
       const cards = await this.getCards();
@@ -329,6 +331,59 @@ class StorageService {
       }
     } catch (e) {
       console.warn('Failed to purge demo review logs:', e);
+    }
+  }
+
+  async _purgeLegacyDemoDecks() {
+    try {
+      const legacyGroupIds = ['grp_bio', 'grp_bio_u1', 'grp_bio_u1_l1', 'grp_bio_u2', 'grp_spanish', 'grp_spanish_u1'];
+      const legacyCardIds = ['card_demo_1', 'card_demo_2', 'card_demo_3', 'card_demo_4', 'card_demo_5', 'card_demo_6'];
+
+      if (this.isIndexedDBAvailable && this.db) {
+        for (const gId of legacyGroupIds) {
+          await this._deleteFromStore('groups', gId);
+        }
+        for (const cId of legacyCardIds) {
+          await this._deleteFromStore('cards', cId);
+        }
+        const settings = await this.getSettings();
+        if (settings && Array.isArray(settings.focusedGroupIds)) {
+          const updatedFocus = settings.focusedGroupIds.filter(id => !legacyGroupIds.includes(id));
+          if (updatedFocus.length === 0) {
+            updatedFocus.push('grp_gk');
+          }
+          if (updatedFocus.length !== settings.focusedGroupIds.length) {
+            settings.focusedGroupIds = updatedFocus;
+            await this.saveSettings(settings);
+          }
+        }
+      }
+
+      const lsGroups = localStorage.getItem('fc_groups');
+      if (lsGroups) {
+        const groups = JSON.parse(lsGroups || '[]');
+        const filtered = groups.filter(g => !legacyGroupIds.includes(g.id));
+        localStorage.setItem('fc_groups', JSON.stringify(filtered));
+      }
+      const lsCards = localStorage.getItem('fc_cards');
+      if (lsCards) {
+        const cards = JSON.parse(lsCards || '[]');
+        const filtered = cards.filter(c => !legacyCardIds.includes(c.id));
+        localStorage.setItem('fc_cards', JSON.stringify(filtered));
+      }
+      const lsSettings = localStorage.getItem('fc_settings');
+      if (lsSettings) {
+        const settings = JSON.parse(lsSettings || '{}');
+        if (Array.isArray(settings.focusedGroupIds)) {
+          settings.focusedGroupIds = settings.focusedGroupIds.filter(id => !legacyGroupIds.includes(id));
+          if (settings.focusedGroupIds.length === 0) {
+            settings.focusedGroupIds = ['grp_gk'];
+          }
+          localStorage.setItem('fc_settings', JSON.stringify(settings));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to purge legacy demo decks:', e);
     }
   }
 

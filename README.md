@@ -1,130 +1,85 @@
-# 🎴 StudyCards — Smart Spaced Repetition Flashcards
+# 🎴 StudyCards
 
-A modern, student-focused flashcard web application designed for Secondary school students and beyond. Built with vanilla HTML5, CSS3, and ES6 JavaScript — zero build step, 100% offline capable, and instantly deployable to **GitHub Pages**.
+**StudyCards** is a smart, distraction-free flashcard application designed to make studying efficient, engaging, and rewarding. Powered by scientifically backed spaced repetition, StudyCards helps you memorize facts, diagrams, formulas, and vocabulary for the long term.
+
+It runs directly in your web browser and can be installed as an offline desktop app on **Chromebooks**, **Mac**, and **Windows**. All your cards, folders, and study progress are stored locally and privately on your device.
+
+---
+
+## 🚀 Getting Started
+
+### Opening & Installing the App
+* **In Your Browser**: Open StudyCards in Google Chrome or any modern browser.
+* **Install as a Desktop App**:
+  1. Open StudyCards in Google Chrome.
+  2. Click the **Install App** button in the top navigation bar (or click the install icon in the right side of Chrome's address bar).
+  3. StudyCards will launch in its own clean, standalone app window with its own desktop or app shelf icon.
+* **Works 100% Offline**: Once loaded or installed, you can study anywhere without an internet connection.
 
 ---
 
 ## ✨ Key Features
 
-### 1. Multi-Type Card System
-- **Basic (Front / Back)**: Clean question & answer format with optional hints.
-- **Reversible (Two-Way)**: Quizzes both directions (Front ➔ Back and Back ➔ Front) to reinforce bidirectional recall.
-- **Cloze Deletion**: Anki-style text cloze (`{{c1::answer}}`) with a dedicated "Make Cloze" formatting tool in the card editor. In study mode, terms are hidden as `[ ... ]` until revealed.
-- **Image Cards**: Prompts with embedded diagrams, photographs, or formulas. Supports file upload, clipboard paste (`Ctrl+V`), and URL links.
-- **Image Occlusion Cards**: Built-in canvas tool allowing students to upload or paste a diagram (e.g. animal cell, world map, physics apparatus) and draw interactive occlusion masks over labels. During review, target boxes prompt recall with interactive reveal.
+### 1. Diverse Card Types
+StudyCards supports five distinct flashcard styles to match how you learn:
 
-### 2. Hierarchical Organization (Folders & Decks)
-- Unlimited nested hierarchy: **Class ➔ Unit ➔ Lesson ➔ Concept ➔ ...**
-- Tree-view folder navigator with expand/collapse and real-time badge counts of **Total Cards** and **Due Cards**.
-- Move, rename, or delete folders at any level.
-
-### 3. Study Modes & Spaced Repetition (SRS)
-- **Daily Review (Anki SM-2 Spaced Repetition)**:
-  - Back-off spacing algorithm: cards answered well are scheduled further apart; difficult cards back off for quicker re-review.
-  - 4 recall rating buttons with live interval previews:
-    - **Again [1]** (`< 10m` or `1d`) — lapses, drops ease factor, re-queues.
-    - **Hard [2]** (slight interval increase, ease penalty).
-    - **Good [3]** (standard SM-2 interval expansion).
-    - **Easy [4]** (bonus interval multiplier, boosts ease factor).
-  - Adapts in real-time as reviews are completed.
-- **Endless Practice (Cram / Free Practice)**:
-  - Rapid-fire study through any deck or folder without affecting your daily SRS schedule.
-- **Group / Branch Review**:
-  - Filter reviews to a specific subject, unit, or lesson branch with one click.
-- **Keyboard Shortcuts**:
-  - `Space` / `Enter`: Flip card / Reveal answer.
-  - `1`, `2`, `3`, `4`: Select rating.
-
-### 4. Progress Tracking & Secondary Student Focus
-- Clean, energetic UI with distraction-free study arena.
-- **Daily Goal Progress Bar** & **Streak Counter (🔥)** to build consistent study habits.
-- End-of-session celebration with animated confetti and session statistics (Accuracy, Time spent, Cards reviewed).
-- Light and Dark appearance themes.
-
-### 5. Sharing & Export / Import
-- **Export to JSON**: Download individual folder branches or entire collections to share with peers.
-- **Import from JSON**: Easily import decks shared by teachers or classmates with merge or replace options.
-- Architecture abstracted in `storage.js` to seamlessly hook into **Firebase Firestore / Realtime Database** in Phase 2 for live collaborative sets and online sharing.
+* **Basic (Question & Answer)**: Classic flashcards for definitions, concepts, and trivia, with optional hints.
+* **Reversible (Two-Way)**: Perfect for learning languages and paired facts. Automatically tests you in both directions (e.g., *English ➔ Spanish* and *Spanish ➔ English*).
+* **Cloze Deletion (Fill-in-the-Blank)**: Hide key terms in a sentence using `{{c1::term}}` syntax (or highlight text and click the **Make Cloze** button in the editor). During study, terms are hidden as `[ ... ]` until you reveal them.
+* **Image Cards**: Embed high-resolution diagrams, photos, or mathematical formulas. You can paste images straight from your clipboard (`Ctrl+V` / `Cmd+V`) or upload image files.
+* **Image Occlusion**: Master anatomical diagrams, maps, or technical charts. Simply upload an image and draw clickable colored boxes over labels. When reviewing, each box acts as an interactive prompt that hides the label until you tap to reveal it.
 
 ---
 
-## 🚀 Live GitHub Pages Deployment Guide
+### 2. Flexible Organization (Folders & Decks)
+Keep all your subjects neat and organized:
 
-Because StudyCards is built with standard web technologies without node bundler requirements, publishing it live to GitHub Pages takes less than a minute:
-
-1. **Initialize Git & Commit**:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit of StudyCards"
-   ```
-
-2. **Create a Repository on GitHub**:
-   - Go to [GitHub](https://github.com) and click **New repository** (e.g., `flash-cards`).
-   - Leave it empty (do not initialize with README since you already have one).
-
-3. **Push to GitHub**:
-   ```bash
-   git remote add origin https://github.com/<YOUR_USERNAME>/<REPO_NAME>.git
-   git branch -M main
-   git push -u origin main
-   ```
-
-4. **Enable GitHub Pages**:
-   - Go to your repository on GitHub.
-   - Click **Settings** ➔ **Pages** (in the left sidebar).
-   - Under **Build and deployment > Source**, select **Deploy from a branch**.
-   - Under **Branch**, select `main` and folder `/ (root)`.
-   - Click **Save**.
-   - Your site will be live at: `https://<YOUR_USERNAME>.github.io/<REPO_NAME>/`!
+* **Nested Folders**: Structure your study materials by **Subject ➔ Unit ➔ Lesson ➔ Topic** (e.g., *Biology ➔ Unit 1: Cells ➔ Lesson 2: Organelles*).
+* **Drag-and-Drop Reorganization**: Easily rearrange folders, lessons, and decks in the left sidebar by dragging them into your preferred order or dropping them inside parent folders.
+* **Live Status Badges**: See exactly how many cards are due for review and how many total cards exist in each folder at a glance.
 
 ---
 
-## 🛠️ Local Development & Testing
+### 3. Smart Spaced Repetition (SRS)
+StudyCards uses the proven SuperMemo (SM-2) spaced repetition algorithm:
 
-To run locally on your computer:
-
-```bash
-# Using Python
-python -m http.server 8080
-
-# Or open index.html directly in any modern web browser
-```
-Visit `http://localhost:8080` in your web browser.
-
----
-
-## 📂 Project Architecture
-
-```
-Flash_Cards/
-├── index.html              # Main single-page application shell
-├── css/
-│   ├── main.css            # Design tokens, variables, typography, navbar
-│   ├── components.css      # Buttons, badges, tree view, hero banner, modals
-│   ├── study.css           # 3D flip card, SM-2 buttons, occlusion styling, confetti
-│   └── responsive.css       # Mobile & tablet responsive adaptations
-├── js/
-│   ├── app.js              # Application entry point & router
-│   ├── srs.js              # SuperMemo-2 spaced repetition engine & intervals
-│   ├── models.js           # Data schemas, default decks & cell diagram SVG
-│   ├── storage.js          # IndexedDB service with localStorage fallback & JSON I/O
-│   ├── occlusionCanvas.js  # Canvas & SVG image occlusion editor & study viewer
-│   └── ui/
-│       ├── dashboardView.js # Hero review banner, streak widget, classes grid
-│       ├── treeView.js      # Hierarchical folder manager & card lists
-│       ├── cardEditor.js    # Card creation modal (all 5 card types)
-│       ├── studyView.js     # Study session controller (Daily, Endless, Group)
-│       └── modal.js         # Folder management, JSON import/export, user settings
-└── README.md
-```
+* **Daily Review**: Cards you find challenging appear more frequently, while cards you know well are spaced days, weeks, or months apart. This ensures you review each concept right before you would naturally forget it.
+* **4-Button Recall Ratings**:
+  * **Again (1)**: If you forgot the card, it resets for a quick re-test.
+  * **Hard (2)**: You remembered, but with significant effort.
+  * **Good (3)**: Successful recall with appropriate spacing.
+  * **Easy (4)**: Instant recall; gives a bonus interval boost.
+* **Study Focus Filter**: Have a test coming up in Chemistry or Spanish? Use the **Study Focus** tool on your Dashboard to focus your daily review session on specific subjects or units.
+* **Endless Practice (Free Cram Mode)**: Want to do a quick rapid-fire review before a quiz? Endless Practice lets you quiz any deck repeatedly without interfering with your long-term spaced repetition schedule.
+* **30-Day Forecast**: View an interactive chart on your Dashboard that illustrates how your upcoming reviews are distributed over the next month.
 
 ---
 
-## 🔮 Phase 2 Roadmap: Firebase Integration
+### 4. Build Daily Study Habits
+* **Daily Goal**: Set a target number of cards to complete each day and watch your progress bar fill up.
+* **Study Streaks (🔥)**: Keep your daily streak alive by reviewing your cards every day.
+* **Celebration & Insights**: Finish your daily review set to enjoy celebration confetti and view your session summary, including total review time and accuracy.
+* **Themes & Accent Colors**: Personalize your workspace with **Light** and **Dark** modes and choose from vibrant accent colors (Terracotta, Sage Green, Ocean Blue, Dusty Rose, Golden Amber, Crimson Brick, or Warm Plum).
 
-The storage layer (`storage.js`) is organized with decoupled asynchronous interfaces:
-- **Authentication**: Firebase Auth (Sign in with Google / Email for secondary students).
-- **Cloud Sync**: Dual-sync between IndexedDB and Firebase Firestore.
-- **Public Deck Marketplace**: Browse and copy community-contributed decks.
-- **Real-time Collaboration**: Shared class decks managed by teachers or study groups.
+---
+
+## ⌨️ Keyboard Shortcuts
+
+Speed through your reviews with intuitive keyboard shortcuts:
+
+| Key | Action |
+| :--- | :--- |
+| `Space` or `Enter` | Flip card / Reveal answer |
+| `1` | Rate **Again** (Forgot) |
+| `2` | Rate **Hard** |
+| `3` | Rate **Good** |
+| `4` | Rate **Easy** |
+| `Esc` | Exit study session back to Dashboard |
+
+---
+
+## 💾 Backup, Share & Privacy
+
+* **100% Private & Local**: Your flashcards, images, and progress are stored safely inside your browser's local database. No accounts or tracking required.
+* **Backup to File**: Click **Backup & Share** in the navigation bar to export your entire flashcard collection (or individual subject folders) to a single file that you can save to Google Drive or your computer.
+* **Import Decks**: Import flashcard files shared by classmates or teachers. You can choose to **Merge** new cards into your existing library or **Replace** your collection.

@@ -112,6 +112,10 @@
   height: 38px;
   padding: 0;
   border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .btn-block {

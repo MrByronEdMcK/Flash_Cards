@@ -2,6 +2,68 @@
    Responsive CSS: Mobile & Tablet Adaptations
    ========================================================================== */
 
+
+@media (max-width: 1050px) {
+  .nav-container {
+    padding: 0 1rem;
+    gap: 0.6rem;
+  }
+  .nav-actions {
+    gap: 0.45rem;
+  }
+  .nav-actions .btn-sm {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 860px) {
+  .nav-container {
+    padding: 0 0.75rem;
+    gap: 0.45rem;
+  }
+  .brand-name {
+    font-size: 1.18rem;
+  }
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .nav-menu {
+    gap: 0.25rem;
+  }
+  .nav-link {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.82rem;
+  }
+  .nav-actions .btn-sm {
+    padding: 0.35rem 0.5rem;
+  }
+  #nav-btn-install .nav-btn-label,
+  #nav-btn-share .nav-btn-label {
+    display: none;
+  }
+  #nav-btn-install,
+  #nav-btn-share {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 680px) {
+  #nav-btn-new-card .nav-btn-label {
+    display: none;
+  }
+  #nav-btn-new-card {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
 @media (max-width: 900px) {
   .hero-banner {
     grid-template-columns: 1fr;

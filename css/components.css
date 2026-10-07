@@ -154,6 +154,22 @@
   color: var(--warning-text);
 }
 
+.badge-new {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--border-color);
+}
+
+.badge-step-learning {
+  background-color: var(--warning-light);
+  color: var(--warning-text);
+  border: 1px solid var(--border-color);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+}
+
 .badge-neutral {
   background-color: var(--bg-subtle);
   color: var(--text-muted);
@@ -2224,6 +2240,353 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   font-size: 0.85rem;
   font-weight: 600;
+}
+
+/* ==========================================================================
+   Multi-Service Flashcard Importer & Digest
+   ========================================================================== */
+.modal-window-lg {
+  max-width: 680px;
+  width: 95%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-window-lg .modal-body {
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.import-service-guide {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  transition: all var(--transition-fast);
+}
+
+.import-service-guide strong {
+  color: var(--text-main);
+}
+
+.import-method-toggle {
+  display: flex;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  gap: 3px;
+}
+
+.method-toggle-btn {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.method-toggle-btn.active {
+  background: var(--bg-surface);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.upload-label-main {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.upload-label-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85rem;
+}
+
+.dest-choice-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.dest-sub-input {
+  padding-left: 1.5rem;
+}
+
+/* Pre-Import Digest & Preview Box */
+.import-preview-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.preview-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.preview-status-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.preview-type-tags {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.type-tag-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.type-tag-badge.basic {
+  background: rgba(56, 115, 78, 0.12);
+  color: #2e6642;
+  border-color: rgba(56, 115, 78, 0.25);
+}
+
+.type-tag-badge.cloze {
+  background: rgba(125, 78, 141, 0.12);
+  color: #6a3a78;
+  border-color: rgba(125, 78, 141, 0.25);
+}
+
+.type-tag-badge.reversible {
+  background: rgba(54, 100, 130, 0.12);
+  color: #274b63;
+  border-color: rgba(54, 100, 130, 0.25);
+}
+
+/* Warnings Box */
+.preview-warnings-box {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.preview-warnings-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #92400e;
+  font-weight: 600;
+}
+
+.btn-warning-toggle {
+  background: none;
+  border: none;
+  color: #b45309;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.preview-warnings-list {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(245, 158, 11, 0.3);
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 0.78rem;
+  color: #78350f;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.warning-item {
+  display: flex;
+  gap: 0.4rem;
+  line-height: 1.35;
+}
+
+.warning-line-badge {
+  background: rgba(180, 83, 9, 0.2);
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* Sample Card Preview in Modal */
+.preview-samples-wrapper {
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.65rem;
+}
+
+.preview-samples-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.45rem;
+}
+
+.preview-samples-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.sample-card-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sample-card-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.sample-card-lbl {
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 44px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.sample-card-val {
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Post-Import Digest Screen */
+.import-finished-digest {
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+.digest-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.digest-icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.digest-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.digest-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  max-width: 460px;
+}
+
+.digest-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 440px;
+  margin: 0.5rem 0;
+}
+
+.digest-stat-item {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.digest-stat-item .stat-num {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.digest-stat-item .stat-lbl {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.digest-warnings-block {
+  width: 100%;
+  max-width: 480px;
+  text-align: left;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8rem;
+  max-height: 110px;
+  overflow-y: auto;
+}
+
+.digest-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 

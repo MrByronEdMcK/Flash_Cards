@@ -4,8 +4,8 @@
  */
 
 import { storage } from '../storage.js';
-import { isCardDue, formatInterval } from '../srs.js';
-import { getCardCount, getDueCountForCard } from '../models.js';
+import { isCardDue, formatInterval, getDailyReviewQueue } from '../srs.js';
+import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
 export class TreeView {
   constructor(container, navigateTo) {
@@ -60,12 +60,18 @@ export class TreeView {
     // Calculate card counts (including subtree)
     const cardCounts = {};
     const dueCounts = {};
+    const settings = await storage.getSettings();
+    const reviewLogs = await storage.getReviewLogs();
+    const todayStr = new Date().toISOString().split('T')[0];
+
     for (const group of groups) {
       const subIds = await storage.getSubgroupIds(group.id);
       subIds.add(group.id);
       const groupCards = cards.filter(c => subIds.has(c.groupId));
+      const groupReviewItems = groupCards.flatMap(c => getReviewItemsForCard(c));
+      const groupQueue = getDailyReviewQueue(groupReviewItems, settings, reviewLogs, todayStr);
       cardCounts[group.id] = groupCards.reduce((sum, c) => sum + getCardCount(c), 0);
-      dueCounts[group.id] = groupCards.reduce((sum, c) => sum + getDueCountForCard(c), 0);
+      dueCounts[group.id] = groupQueue.totalDailyCount;
     }
 
     const activeGroup = groups.find(g => g.id === this.selectedGroupId);
@@ -238,6 +244,7 @@ export class TreeView {
               <button class="dropdown-item" id="btn-export-group">📤 Export Folder (JSON)</button>
               <button class="dropdown-item" id="btn-edit-group">✏️ Rename / Edit</button>
               <div class="dropdown-divider"></div>
+              <button class="dropdown-item text-warning" id="btn-reset-group-progress">🔄 Reset Review Progress</button>
               <button class="dropdown-item text-danger" id="btn-delete-group">🗑️ Delete Folder</button>
             </div>
           </div>
@@ -254,14 +261,28 @@ export class TreeView {
   }
 
   _renderCardItem(card) {
-    const dueCount = getDueCountForCard(card);
     const totalCount = getCardCount(card);
-    const isDue = dueCount > 0;
-    const intervalDisplay = formatInterval(card.srs ? card.srs.interval : 0, card.srs ? card.srs.state : 'new');
+    const srs = card.srs || { state: 'new', interval: 0 };
+    const isNew = srs.state === 'new' || srs.interval === 0;
+    const isDue = isCardDue(card);
+    const intervalDisplay = formatInterval(srs.interval || 0, srs.state || 'new');
 
-    let badgeText = isDue ? 'Due Today' : `Interval: ${intervalDisplay}`;
+    let badgeText = '';
+    let badgeClass = 'badge-neutral';
+
     if (totalCount > 1) {
-      badgeText = isDue ? `${dueCount} of ${totalCount} Due` : `${totalCount} cards (Caught up)`;
+      const dueCount = getDueCountForCard(card);
+      badgeText = dueCount > 0 ? `${dueCount} of ${totalCount} Due` : `${totalCount} cards`;
+      badgeClass = dueCount > 0 ? 'badge-due' : 'badge-neutral';
+    } else if (isNew) {
+      badgeText = 'New Card';
+      badgeClass = 'badge-new';
+    } else if (isDue) {
+      badgeText = 'Due Today';
+      badgeClass = 'badge-due';
+    } else {
+      badgeText = `Interval: ${intervalDisplay}`;
+      badgeClass = 'badge-neutral';
     }
 
     let previewContent = '';
@@ -288,7 +309,7 @@ export class TreeView {
       <div class="card-item-box" data-card-id="${card.id}">
         <div class="card-item-top">
           <span class="badge badge-card-type">${(card.type || 'basic').replace('_', ' ').toUpperCase()}</span>
-          <span class="badge ${isDue ? 'badge-due' : 'badge-neutral'}">
+          <span class="badge ${badgeClass}">
             ${badgeText}
           </span>
         </div>
@@ -298,6 +319,7 @@ export class TreeView {
         </div>
 
         <div class="card-item-actions">
+          <button class="btn btn-ghost btn-xs btn-reset-card" data-card-id="${card.id}" title="Reset review data to new">🔄 Reset</button>
           <button class="btn btn-ghost btn-xs btn-edit-card" data-card-id="${card.id}">Edit</button>
           <button class="btn btn-ghost btn-xs text-danger btn-delete-card" data-card-id="${card.id}">Delete</button>
         </div>
@@ -504,6 +526,20 @@ export class TreeView {
       });
     }
 
+    // Reset group progress
+    const btnResetGroupProgress = this.container.querySelector('#btn-reset-group-progress');
+    if (btnResetGroupProgress) {
+      btnResetGroupProgress.addEventListener('click', async () => {
+        const activeGroup = groups.find(g => g.id === this.selectedGroupId);
+        const groupName = activeGroup ? activeGroup.name : 'this folder';
+        if (confirm(`Reset review progress for "${groupName}" and all its subfolders? All cards will return to the review queue as new cards.`)) {
+          await storage.resetReviewData(this.selectedGroupId, true);
+          window.dispatchEvent(new CustomEvent('groups-updated'));
+          this.render();
+        }
+      });
+    }
+
     // Delete group
     const btnDeleteGroup = this.container.querySelector('#btn-delete-group');
     if (btnDeleteGroup) {
@@ -524,6 +560,16 @@ export class TreeView {
     });
 
     // Card item actions
+    this.container.querySelectorAll('.btn-reset-card').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (confirm('Reset review progress for this card back to new?')) {
+          await storage.resetCardReviewData(btn.dataset.cardId);
+          window.dispatchEvent(new CustomEvent('groups-updated'));
+          this.render();
+        }
+      });
+    });
+
     this.container.querySelectorAll('.btn-edit-card').forEach(btn => {
       btn.addEventListener('click', async () => {
         const card = await storage.getCard(btn.dataset.cardId);

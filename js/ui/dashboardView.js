@@ -8,7 +8,7 @@
  */
 
 import { storage } from '../storage.js';
-import { isCardDue } from '../srs.js';
+import { isCardDue, getDailyReviewQueue } from '../srs.js';
 import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
 export async function renderDashboard(container, navigateTo) {
@@ -72,20 +72,6 @@ export async function renderDashboard(container, navigateTo) {
   const activeReviewItems = activeCards.flatMap(c => getReviewItemsForCard(c));
   const activeCardIds = new Set(activeCards.map(c => c.id));
 
-  // Compute counts for Hero & Badges based on active focus
-  const totalCards = activeCards.reduce((sum, c) => sum + getCardCount(c), 0);
-  const totalDueCards = activeCards.reduce((sum, c) => sum + getDueCountForCard(c), 0);
-  const reviewCards = activeCards.filter(c => c.srs && c.srs.state === 'review');
-
-  const targetDailyGoal = settings.dailyNewLimit || 20;
-  const cardsReviewedToday = settings.cardsReviewedToday || 0;
-  const progressPercent = Math.min(100, Math.round((cardsReviewedToday / targetDailyGoal) * 100));
-
-  // Root groups (Classes)
-  const rootGroups = groups
-    .filter(g => !g.parentId)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
   // -------------------------------------------------------------
   // Calculate 30-Day Calendar & Forecast (31 Days: -5 to +25)
   // -------------------------------------------------------------
@@ -97,24 +83,39 @@ export async function renderDashboard(container, navigateTo) {
     ? (reviewLogs || []).filter(log => activeCardIds.has(log.cardId))
     : (reviewLogs || []);
 
+  // Compute daily review queue via SRS engine (caps new cards at daily limit, e.g. 20/day)
+  const dailyQueue = isFocusActive
+    ? getDailyReviewQueue(activeReviewItems, settings, focusedLogs, todayStr)
+    : { totalDailyCount: 0, todayNewCount: 0, todayReviewCount: 0, todayNewDone: 0 };
+
+  // Compute counts for Hero & Badges based on active focus
+  const totalCards = activeCards.reduce((sum, c) => sum + getCardCount(c), 0);
+  const totalDueCards = dailyQueue.totalDailyCount;
+  const reviewCards = activeCards.filter(c => c.srs && c.srs.state === 'review');
+
+  const targetDailyGoal = settings.dailyNewLimit || 20;
+  const cardsReviewedToday = settings.cardsReviewedToday || 0;
+  const progressPercent = Math.min(100, Math.round((cardsReviewedToday / targetDailyGoal) * 100));
+
+  // Root groups (Classes)
+  const rootGroups = groups
+    .filter(g => !g.parentId)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
   // Unlearned items in focus: no SRS, state === 'new', or interval === 0
   const unlearnedItems = activeReviewItems.filter(item => 
     !item.srs || item.srs.state === 'new' || item.srs.interval === 0
   );
 
   // New & Review cards completed today so far
-  const todayNewDone = focusedLogs.filter(log => log.date === todayStr && (log.oldInterval || 0) === 0).length;
+  const todayNewDone = dailyQueue.todayNewDone;
   const todayReviewDone = focusedLogs.filter(log => log.date === todayStr && (log.oldInterval || 0) > 0).length;
 
   // Remaining new cards to introduce today (capped by daily limit and unlearned pool)
-  const todayNewRemaining = isFocusActive 
-    ? Math.max(0, Math.min(targetDailyGoal - todayNewDone, unlearnedItems.length))
-    : 0;
+  const todayNewRemaining = dailyQueue.todayNewCount;
 
   // Remaining due review items for today (excluding unlearned cards)
-  const todayReviewRemaining = isFocusActive
-    ? activeReviewItems.filter(item => item.srs && item.srs.state !== 'new' && item.srs.interval > 0 && isCardDue(item, todayStr)).length
-    : 0;
+  const todayReviewRemaining = dailyQueue.todayReviewCount;
 
   // -------------------------------------------------------------
   // Forward Simulation Engine (Assuming "Good" responses)
@@ -345,6 +346,10 @@ export async function renderDashboard(container, navigateTo) {
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                   Start Daily Review (${totalDueCards} due)
                 </button>
+                <button class="btn btn-outline btn-lg" id="btn-start-endless-all">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.739-8z"></path></svg>
+                  Endless Practice
+                </button>
               ` : `
                 <button class="btn btn-primary btn-lg" id="btn-start-endless-all">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.739-8z"></path></svg>
@@ -431,8 +436,10 @@ export async function renderDashboard(container, navigateTo) {
             const childGroups = groups.filter(g => g.parentId === group.id);
             const childGroupIds = new Set(childGroups.map(g => g.id));
             const classCards = cards.filter(c => c.groupId === group.id || childGroupIds.has(c.groupId));
+            const classReviewItems = classCards.flatMap(c => getReviewItemsForCard(c));
+            const classDailyQueue = getDailyReviewQueue(classReviewItems, settings, reviewLogs, todayStr);
             const totalInClass = classCards.reduce((sum, c) => sum + getCardCount(c), 0);
-            const dueInClass = classCards.reduce((sum, c) => sum + getDueCountForCard(c), 0);
+            const dueInClass = classDailyQueue.totalDailyCount;
             const isThisClassFocused = focusedGroupIds.includes(group.id);
 
             const iconEmoji = group.icon === 'globe' ? '🌍' : group.icon === 'dna' ? '🧬' : group.icon === 'atom' ? '⚛️' : group.icon === 'palette' ? '🎨' : group.icon === 'compass' ? '🧭' : group.icon === 'microscope' ? '🔬' : '📚';
@@ -459,7 +466,10 @@ export async function renderDashboard(container, navigateTo) {
 
                 <div class="class-card-actions">
                   <button class="btn btn-primary btn-sm btn-class-daily" data-group-id="${group.id}">
-                    Daily Review
+                    Daily (${dueInClass})
+                  </button>
+                  <button class="btn btn-outline btn-sm btn-class-endless" data-group-id="${group.id}" title="Endless Practice">
+                    Endless
                   </button>
                   <button class="btn ${isThisClassFocused ? 'btn-focused' : 'btn-outline'} btn-sm btn-class-focus-toggle" data-group-id="${group.id}">
                     ${isThisClassFocused ? '✓ Focused' : '🎯 Focus'}
@@ -1037,6 +1047,12 @@ export async function renderDashboard(container, navigateTo) {
   container.querySelectorAll('.btn-class-daily').forEach(btn => {
     btn.addEventListener('click', () => {
       navigateTo('study', { mode: 'daily', groupId: btn.dataset.groupId, includeSubgroups: true });
+    });
+  });
+
+  container.querySelectorAll('.btn-class-endless').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigateTo('study', { mode: 'endless', groupId: btn.dataset.groupId, includeSubgroups: true });
     });
   });
 

@@ -78,8 +78,19 @@ Speed through your reviews with intuitive keyboard shortcuts:
 
 ---
 
-## 💾 Backup, Share & Privacy
+## 📥 Multi-Service Import & Backup
 
-* **100% Private & Local**: Your flashcards, images, and progress are stored safely inside your browser's local database. No accounts or tracking required.
-* **Backup to File**: Click **Backup & Share** in the navigation bar to export your entire flashcard collection (or individual subject folders) to a single file that you can save to Google Drive or your computer.
-* **Import Decks**: Import flashcard files shared by classmates or teachers. You can choose to **Merge** new cards into your existing library or **Replace** your collection.
+* **Import From Everywhere**: Seamlessly migrate flashcard decks into StudyCards from:
+  * **Quizlet**: Copy exported text or upload Quizlet `.txt`/`.tsv`/`.csv` files.
+  * **Anki**: Import Anki plain text notes (`.txt`, `.tsv`) with full HTML formatting and automatic conversion of Anki Cloze deletions (`{{c1::...}}`).
+  * **RemNote**: Import RemNote Markdown and Text exports with Basic (`::`), Reversible (`:::`), multiline (`;;`), and Cloze (`{{...}}`) cards.
+  * **Brainscape**: Upload Brainscape `.csv` export files.
+  * **Cram.com**: Import Cram tab-delimited or comma-delimited card sets with optional hints.
+  * **Knowt**: Import Quizlet-formatted text, CSV, or Knowt JSON exports.
+  * **Universal CSV / TSV**: Import any spreadsheet or text file separated by tabs, commas, or semicolons.
+  * **StudyCards Backup**: Restore native `.json` backup files.
+* **Flexible Input Methods**: Upload a file (`.txt`, `.tsv`, `.csv`, `.json`, `.md`) or simply paste copied text straight into the app.
+* **Smart Live Preview & Validation**: As you paste or upload, StudyCards automatically detects the format, displays the count of valid cards and card types (Basic, Cloze, Reversible), previews sample cards, and warns you if any rows have missing answers or formatting errors.
+* **Import Digest**: Once imported, review a clear digest of cards added, destination deck, and an itemized breakdown of any skipped lines.
+* **100% Private & Local**: Your flashcards, images, and progress are stored safely inside your browser's local database. No cloud subscriptions or accounts required.
+* **Backup to File**: Click **Import / Export** in the navigation bar to export your entire flashcard collection (or individual folders) to a single backup file that you can save to Google Drive or your computer.

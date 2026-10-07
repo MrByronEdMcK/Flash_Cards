@@ -172,6 +172,12 @@ class FlashcardApp {
       }
     });
 
+    window.addEventListener('navigate-to', (e) => {
+      if (e.detail && e.detail.view) {
+        this.navigate(e.detail.view, e.detail.options || {});
+      }
+    });
+
     window.addEventListener('settings-updated', async () => {
       const settings = await storage.getSettings();
       if (settings && settings.theme) {
@@ -251,5 +257,6 @@ class FlashcardApp {
 // Bootstrap on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
   const app = new FlashcardApp();
+  window.app = app;
   app.init();
 });

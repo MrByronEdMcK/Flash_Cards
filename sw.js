@@ -4,7 +4,7 @@
  * and background asset updates via GitHub.
  */
 
-const CACHE_NAME = 'studycards-v4';
+const CACHE_NAME = 'studycards-v7';
 
 const STATIC_ASSETS = [
   './',
@@ -19,6 +19,7 @@ const STATIC_ASSETS = [
   './js/storage.js',
   './js/srs.js',
   './js/generalKnowledgeData.js',
+  './js/importers.js',
   './js/occlusionCanvas.js',
   './js/ui/dashboardView.js',
   './js/ui/studyView.js',

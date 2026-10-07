@@ -251,6 +251,58 @@ class StorageService {
     return result;
   }
 
+  /**
+   * Reset review progress for cards in a group (and optional sub-groups)
+   * Resets SRS data back to 'new' state so cards re-enter daily and endless review queues.
+   */
+  async resetReviewData(groupId = null, includeSubgroups = true) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const cards = await this.getCards(groupId, includeSubgroups);
+    let resetCount = 0;
+
+    for (const card of cards) {
+      card.srs = {
+        state: 'new',
+        interval: 0,
+        easeFactor: 2.5,
+        reps: 0,
+        lapses: 0,
+        consecutiveGoods: 0,
+        dueDate: todayStr,
+        lastReviewed: null
+      };
+      card.boxSrs = {};
+      card.clozeSrs = {};
+      await this.saveCard(card);
+      resetCount++;
+    }
+
+    return resetCount;
+  }
+
+  /**
+   * Reset review progress for a single card
+   */
+  async resetCardReviewData(cardId) {
+    const card = await this.getCard(cardId);
+    if (!card) return null;
+    const todayStr = new Date().toISOString().split('T')[0];
+    card.srs = {
+      state: 'new',
+      interval: 0,
+      easeFactor: 2.5,
+      reps: 0,
+      lapses: 0,
+      consecutiveGoods: 0,
+      dueDate: todayStr,
+      lastReviewed: null
+    };
+    card.boxSrs = {};
+    card.clozeSrs = {};
+    await this.saveCard(card);
+    return card;
+  }
+
   // --- Settings API ---
   async getSettings() {
     if (!this.isIndexedDBAvailable) return this._lsGetSettings();

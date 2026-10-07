@@ -7,7 +7,9 @@ import { storage } from '../storage.js';
 import { 
   processReview, 
   getRatingPredictions, 
-  isCardDue, 
+  isCardDue,
+  getDailyReviewQueue,
+  getEndlessQueue,
   RATINGS, 
   CARD_STATES 
 } from '../srs.js';
@@ -28,14 +30,14 @@ export class StudyView {
     let allCards;
     let groupName = 'All Decks';
 
+    const settings = await storage.getSettings();
+    const activeFocus = focusedGroupIds !== null ? focusedGroupIds : (settings.focusedGroupIds || []);
+
     if (groupId) {
       allCards = await storage.getCards(groupId, includeSubgroups);
       const g = await storage.getGroup(groupId);
       if (g) groupName = g.name;
     } else {
-      const settings = await storage.getSettings();
-      const activeFocus = focusedGroupIds !== null ? focusedGroupIds : (settings.focusedGroupIds || []);
-      
       if (activeFocus && activeFocus.length > 0) {
         const allowedGroupIds = new Set();
         for (const gid of activeFocus) {
@@ -57,21 +59,30 @@ export class StudyView {
         allCards = [];
       } else {
         allCards = await storage.getCards();
+        groupName = 'All Decks';
       }
     }
 
-    const isNoFocusDaily = mode === 'daily' && !groupId && (!focusedGroupIds?.length && !(await storage.getSettings()).focusedGroupIds?.length);
+    const isNoFocusDaily = mode === 'daily' && !groupId && (!activeFocus || activeFocus.length === 0);
 
     // Expand cards into reviewable items (1 per box for guess-one occlusion cards)
     const allReviewItems = allCards.flatMap(c => getReviewItemsForCard(c));
     let sessionCards = [];
+    let isCappedOutEndless = false;
+    let earliestFutureDueDate = null;
+
+    const reviewLogs = await storage.getReviewLogs();
+    const todayStr = new Date().toISOString().split('T')[0];
 
     if (mode === 'daily') {
-      // Due review items
-      sessionCards = allReviewItems.filter(item => isCardDue(item));
+      const dailyQueue = getDailyReviewQueue(allReviewItems, settings, reviewLogs, todayStr);
+      sessionCards = dailyQueue.sessionCards;
     } else {
-      // Endless practice: all cards, shuffled
-      sessionCards = [...allReviewItems].sort(() => Math.random() - 0.5);
+      // Endless practice: uncapped review
+      const endlessQueue = getEndlessQueue(allReviewItems, todayStr);
+      sessionCards = [...endlessQueue.sessionCards].sort(() => Math.random() - 0.5);
+      isCappedOutEndless = endlessQueue.isCappedOut;
+      earliestFutureDueDate = endlessQueue.earliestFutureDueDate;
     }
 
     this.session = {
@@ -79,6 +90,8 @@ export class StudyView {
       groupId,
       groupName,
       isNoFocusDaily,
+      isCappedOutEndless,
+      earliestFutureDueDate,
       cards: sessionCards,
       currentIndex: 0,
       isFlipped: false,
@@ -119,14 +132,11 @@ export class StudyView {
         if (!this.session.isFlipped) {
           this._flipCard();
         }
-      } else if (this.session.isFlipped && this.session.mode === 'daily') {
+      } else if (this.session.isFlipped) {
         if (e.key === '1') this._handleRating(RATINGS.AGAIN);
         else if (e.key === '2') this._handleRating(RATINGS.HARD);
         else if (e.key === '3') this._handleRating(RATINGS.GOOD);
         else if (e.key === '4') this._handleRating(RATINGS.EASY);
-      } else if (this.session.isFlipped && this.session.mode === 'endless') {
-        if (e.key === '1' || e.key === 'ArrowLeft') this._handleEndlessNext(false);
-        else if (e.key === '2' || e.key === 'ArrowRight') this._handleEndlessNext(true);
       }
     };
     window.addEventListener('keydown', this.keyListener);
@@ -244,7 +254,12 @@ export class StudyView {
               <!-- FRONT FACE -->
               <div class="card-face card-face-front">
                 <div class="card-face-header">
-                  <span class="card-type-indicator">${(currentCard.type || 'basic').replace('_', ' ').toUpperCase()}</span>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="card-type-indicator">${(currentCard.type || 'basic').replace('_', ' ').toUpperCase()}</span>
+                    ${currentCard.srs && currentCard.srs.consecutiveGoods === 1 ? `
+                      <span class="badge badge-step-learning" title="Rated Good once. Needs 1 more Good rating in a row to graduate to tomorrow!">⭐ 1 of 2 Good</span>
+                    ` : ''}
+                  </div>
                   <span class="card-flip-prompt">${currentCard.type === CARD_TYPES.IMAGE_OCCLUSION ? 'Click or Press <strong>Space</strong> to Reveal' : 'Click or Press <strong>Space</strong> to Flip'}</span>
                 </div>
 
@@ -264,7 +279,12 @@ export class StudyView {
                 <!-- BACK FACE (for non-occlusion cards) -->
                 <div class="card-face card-face-back">
                   <div class="card-face-header">
-                    <span class="card-type-indicator">ANSWER</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span class="card-type-indicator">ANSWER</span>
+                      ${currentCard.srs && currentCard.srs.consecutiveGoods === 1 ? `
+                        <span class="badge badge-step-learning" title="Needs 1 more Good rating in a row to graduate!">⭐ 1 of 2 Good</span>
+                      ` : ''}
+                    </div>
                     <span class="card-flip-prompt">Rate your recall</span>
                   </div>
 
@@ -463,66 +483,44 @@ export class StudyView {
 
   _renderFlippedActions() {
     const currentCard = this.session.cards[this.session.currentIndex];
+    const predictions = getRatingPredictions(currentCard.srs);
 
-    if (this.session.mode === 'daily') {
-      const predictions = getRatingPredictions(currentCard.srs);
+    return `
+      <div class="anki-ratings-group">
+        <button class="btn-srs-rating rating-again" data-rating="${RATINGS.AGAIN}">
+          <span class="rating-interval">${predictions[RATINGS.AGAIN].intervalText}</span>
+          <span class="rating-name">Again</span>
+          <span class="rating-key">[1]</span>
+        </button>
 
-      return `
-        <div class="anki-ratings-group">
-          <button class="btn-srs-rating rating-again" data-rating="${RATINGS.AGAIN}">
-            <span class="rating-interval">${predictions[RATINGS.AGAIN].intervalText}</span>
-            <span class="rating-name">Again</span>
-            <span class="rating-key">[1]</span>
-          </button>
+        <button class="btn-srs-rating rating-hard" data-rating="${RATINGS.HARD}">
+          <span class="rating-interval">${predictions[RATINGS.HARD].intervalText}</span>
+          <span class="rating-name">Hard</span>
+          <span class="rating-key">[2]</span>
+        </button>
 
-          <button class="btn-srs-rating rating-hard" data-rating="${RATINGS.HARD}">
-            <span class="rating-interval">${predictions[RATINGS.HARD].intervalText}</span>
-            <span class="rating-name">Hard</span>
-            <span class="rating-key">[2]</span>
-          </button>
+        <button class="btn-srs-rating rating-good" data-rating="${RATINGS.GOOD}">
+          <span class="rating-interval">${predictions[RATINGS.GOOD].intervalText}</span>
+          <span class="rating-name">Good</span>
+          <span class="rating-key">[3]</span>
+        </button>
 
-          <button class="btn-srs-rating rating-good" data-rating="${RATINGS.GOOD}">
-            <span class="rating-interval">${predictions[RATINGS.GOOD].intervalText}</span>
-            <span class="rating-name">Good</span>
-            <span class="rating-key">[3]</span>
-          </button>
-
-          <button class="btn-srs-rating rating-easy" data-rating="${RATINGS.EASY}">
-            <span class="rating-interval">${predictions[RATINGS.EASY].intervalText}</span>
-            <span class="rating-name">Easy</span>
-            <span class="rating-key">[4]</span>
-          </button>
-        </div>
-      `;
-    } else {
-      // Endless Practice actions
-      return `
-        <div class="endless-action-group">
-          <button class="btn btn-danger btn-lg" id="btn-endless-again">
-            Needs Practice &larr; [1]
-          </button>
-          <button class="btn btn-success btn-lg" id="btn-endless-good">
-            Got It! &rarr; [2]
-          </button>
-        </div>
-      `;
-    }
+        <button class="btn-srs-rating rating-easy" data-rating="${RATINGS.EASY}">
+          <span class="rating-interval">${predictions[RATINGS.EASY].intervalText}</span>
+          <span class="rating-name">Easy</span>
+          <span class="rating-key">[4]</span>
+        </button>
+      </div>
+    `;
   }
 
   _wireFlippedActionButtons() {
-    if (this.session.mode === 'daily') {
-      this.container.querySelectorAll('.btn-srs-rating').forEach(btn => {
-        btn.onclick = () => {
-          const rating = Number(btn.dataset.rating);
-          this._handleRating(rating);
-        };
-      });
-    } else {
-      const btnAgain = this.container.querySelector('#btn-endless-again');
-      const btnGood = this.container.querySelector('#btn-endless-good');
-      if (btnAgain) btnAgain.onclick = () => this._handleEndlessNext(false);
-      if (btnGood) btnGood.onclick = () => this._handleEndlessNext(true);
-    }
+    this.container.querySelectorAll('.btn-srs-rating').forEach(btn => {
+      btn.onclick = () => {
+        const rating = Number(btn.dataset.rating);
+        this._handleRating(rating);
+      };
+    });
   }
 
   async _handleRating(rating) {
@@ -573,8 +571,6 @@ export class StudyView {
     // Track stats
     if (rating === RATINGS.AGAIN) {
       this.session.stats.again++;
-      // If rated Again in Daily mode, re-append this specific review item to queue
-      this.session.cards.push(currentItem);
     } else if (rating === RATINGS.HARD) {
       this.session.stats.hard++;
     } else if (rating === RATINGS.GOOD) {
@@ -583,18 +579,12 @@ export class StudyView {
       this.session.stats.easy++;
     }
 
-    this.session.currentIndex++;
-    this._renderCurrentCard();
-  }
-
-  _handleEndlessNext(gotIt) {
-    const currentCard = this.session.cards[this.session.currentIndex];
-    if (gotIt) {
-      this.session.stats.good++;
-    } else {
-      this.session.stats.again++;
-      this.session.cards.push(currentCard); // Re-queue for practice
+    // Re-queue card if not yet rescheduled into the future:
+    // (e.g. On first review, cards need 2 good ratings in a row before graduating/rescheduling, or if rated Again/Hard)
+    if (newSrs.interval === 0) {
+      this.session.cards.push(currentItem);
     }
+
     this.session.currentIndex++;
     this._renderCurrentCard();
   }
@@ -602,6 +592,7 @@ export class StudyView {
   _renderCompletion() {
     this.destroy();
 
+    // 1. No Focus Set (Daily Mode)
     if (this.session && this.session.isNoFocusDaily) {
       this.container.innerHTML = `
         <div class="completion-screen animate-scale-up">
@@ -613,7 +604,7 @@ export class StudyView {
             </p>
             <div class="completion-actions" style="justify-content: center;">
               <button class="btn btn-primary btn-lg" id="btn-comp-dashboard">
-                Return to Dashboard & Set Focus
+                Return to Dashboard &amp; Set Focus
               </button>
             </div>
           </div>
@@ -626,6 +617,66 @@ export class StudyView {
       return;
     }
 
+    // 2. Endless Capped Out (All cards scheduled for a future date)
+    if (this.session && this.session.mode === 'endless' && (this.session.isCappedOutEndless || this.session.cards.length === 0)) {
+      this.container.innerHTML = `
+        <div class="completion-screen animate-scale-up">
+          <div class="completion-card">
+            <div class="completion-badge-icon">🎯</div>
+            <h2 class="completion-title">All Caught Up in Endless Practice!</h2>
+            <p class="completion-subtitle">
+              All cards in <strong>${escapeHtml(this.session.groupName)}</strong> are already scheduled for review at a later date.
+              ${this.session.earliestFutureDueDate ? `<br><span style="display:inline-block; margin-top:8px; font-weight:600; color:var(--primary);">Earliest review scheduled for: ${this.session.earliestFutureDueDate}</span>` : ''}
+            </p>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+              To review all these cards again right now, you can reset their review progress in Folders &amp; Decks or reset below.
+            </p>
+            <div class="completion-actions" style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;">
+              <button class="btn btn-warning btn-lg" id="btn-comp-reset-progress">
+                🔄 Reset Review Progress &amp; Study Again
+              </button>
+              <button class="btn btn-outline btn-lg" id="btn-comp-decks">
+                📁 View Folders &amp; Decks
+              </button>
+              <button class="btn btn-ghost btn-lg" id="btn-comp-dashboard">
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      this._wireCompletionNavigation();
+      return;
+    }
+
+    // 3. Daily Completed with 0 Cards Initially Due
+    if (this.session && this.session.mode === 'daily' && this.session.stats.total === 0) {
+      this.container.innerHTML = `
+        <div class="completion-screen animate-scale-up">
+          <div class="completion-card">
+            <div class="completion-badge-icon">🎉</div>
+            <h2 class="completion-title">All Caught Up for Today!</h2>
+            <p class="completion-subtitle">
+              You've completed all your scheduled daily reviews for <strong>${escapeHtml(this.session.groupName)}</strong>.
+            </p>
+            <div class="completion-actions" style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;">
+              <button class="btn btn-primary btn-lg" id="btn-comp-endless">
+                Keep Practicing (Endless Mode)
+              </button>
+              <button class="btn btn-outline btn-lg" id="btn-comp-dashboard">
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      this._wireCompletionNavigation();
+      return;
+    }
+
+    // 4. Session Just Finished With Reviews
     const stats = this.session.stats;
     const durationMins = Math.max(1, Math.round((Date.now() - stats.startTime) / 60000));
     const totalAnswers = stats.again + stats.hard + stats.good + stats.easy;
@@ -633,15 +684,18 @@ export class StudyView {
       ? Math.round(((stats.good + stats.easy) / totalAnswers) * 100) 
       : 100;
 
+    const isDaily = this.session.mode === 'daily';
+
     this.container.innerHTML = `
       <div class="completion-screen animate-scale-up">
         <canvas id="confetti-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10;"></canvas>
 
         <div class="completion-card">
           <div class="completion-badge-icon">🎉</div>
-          <h2 class="completion-title">Outstanding Work!</h2>
+          <h2 class="completion-title">${isDaily ? 'Outstanding Work!' : 'Practice Session Complete!'}</h2>
           <p class="completion-subtitle">
-            You've completed your <strong>${this.session.mode === 'daily' ? 'Daily Review' : 'Practice Session'}</strong> for ${escapeHtml(this.session.groupName)}.
+            You've completed your <strong>${isDaily ? 'Daily Review' : 'Endless Practice'}</strong> for ${escapeHtml(this.session.groupName)}.
+            ${!isDaily ? '<br><span style="font-size:0.9rem; color:var(--text-muted);">All cards reviewed have been scheduled into future dates.</span>' : ''}
           </p>
 
           <div class="completion-stats-grid">
@@ -661,29 +715,68 @@ export class StudyView {
             </div>
           </div>
 
-          <div class="completion-actions">
+          <div class="completion-actions" style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;">
             <button class="btn btn-primary btn-lg" id="btn-comp-dashboard">
               Back to Dashboard
             </button>
-            <button class="btn btn-outline btn-lg" id="btn-comp-endless">
-              Keep Practicing (Endless Mode)
-            </button>
+            ${isDaily ? `
+              <button class="btn btn-outline btn-lg" id="btn-comp-endless">
+                Keep Practicing (Endless Mode)
+              </button>
+            ` : `
+              <button class="btn btn-outline btn-lg" id="btn-comp-decks">
+                📁 Folders &amp; Decks
+              </button>
+              <button class="btn btn-warning btn-lg" id="btn-comp-reset-progress">
+                🔄 Reset &amp; Practice Again
+              </button>
+            `}
           </div>
         </div>
       </div>
     `;
 
     this._launchConfetti();
+    this._wireCompletionNavigation();
+  }
 
+  _wireCompletionNavigation() {
     const btnDash = this.container.querySelector('#btn-comp-dashboard');
     if (btnDash) {
       btnDash.addEventListener('click', () => this.navigateTo('dashboard'));
+    }
+
+    const btnDecks = this.container.querySelector('#btn-comp-decks');
+    if (btnDecks) {
+      btnDecks.addEventListener('click', () => this.navigateTo('decks'));
     }
 
     const btnEndless = this.container.querySelector('#btn-comp-endless');
     if (btnEndless) {
       btnEndless.addEventListener('click', () => {
         this.start({ mode: 'endless', groupId: this.session.groupId });
+      });
+    }
+
+    const btnReset = this.container.querySelector('#btn-comp-reset-progress');
+    if (btnReset) {
+      btnReset.addEventListener('click', async () => {
+        if (confirm(`Reset review progress for "${this.session.groupName}"? All cards will be returned to the review queues as new cards.`)) {
+          if (this.session.groupId) {
+            await storage.resetReviewData(this.session.groupId, true);
+          } else {
+            const settings = await storage.getSettings();
+            if (settings.focusedGroupIds?.length > 0) {
+              for (const gid of settings.focusedGroupIds) {
+                await storage.resetReviewData(gid, true);
+              }
+            } else {
+              await storage.resetReviewData(null, true);
+            }
+          }
+          window.dispatchEvent(new CustomEvent('groups-updated'));
+          this.start({ mode: 'endless', groupId: this.session.groupId });
+        }
       });
     }
   }

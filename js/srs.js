@@ -23,6 +23,7 @@ export const DEFAULT_SRS_DATA = {
   easeFactor: 2.5,   // Standard starting ease factor (250%)
   reps: 0,           // Successful consecutive repetitions
   lapses: 0,         // Number of times card was forgotten
+  consecutiveGoods: 0, // Number of consecutive good ratings in first review / learning phase
   dueDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
   lastReviewed: null
 };
@@ -69,7 +70,9 @@ export function addDays(days, baseDate = new Date()) {
 }
 
 /**
- * Compute the next SRS state and scheduling given a rating (1: Again, 2: Hard, 3: Good, 4: Easy)
+ * Compute the next SRS state and scheduling given a rating (1: Again, 2: Hard, 3: Good, 4: Easy).
+ * On first review (new or learning cards), cards need 2 good ratings in a row before graduating/rescheduling.
+ * 
  * @param {Object} currentSrs 
  * @param {number} rating 
  * @returns {Object} Updated SRS data
@@ -83,63 +86,100 @@ export function processReview(currentSrs = DEFAULT_SRS_DATA, rating) {
     interval: currentSrs.interval || 0,
     easeFactor: Math.max(1.3, currentSrs.easeFactor || 2.5),
     reps: currentSrs.reps || 0,
-    lapses: currentSrs.lapses || 0
+    lapses: currentSrs.lapses || 0,
+    consecutiveGoods: currentSrs.consecutiveGoods || 0
   };
+
+  const isFirstReview = prev.state === CARD_STATES.NEW || prev.interval === 0 || prev.state === CARD_STATES.LEARNING;
 
   let nextState = prev.state;
   let nextInterval = prev.interval;
   let nextEase = prev.easeFactor;
   let nextReps = prev.reps;
   let nextLapses = prev.lapses;
+  let nextConsecutiveGoods = prev.consecutiveGoods;
 
-  if (rating === RATINGS.AGAIN) {
-    // LAPSE: Back-off interval, increase lapse count, drop ease factor
-    nextLapses += 1;
-    nextReps = 0;
-    nextInterval = 1; // Back off to 1 day (or review again today)
-    nextEase = Math.max(1.3, prev.easeFactor - 0.20);
-    nextState = CARD_STATES.RELEARNING;
-  } else if (rating === RATINGS.HARD) {
-    // HARD: Slower interval increase, slight ease penalty
-    nextEase = Math.max(1.3, prev.easeFactor - 0.15);
-    if (prev.state === CARD_STATES.NEW || prev.interval <= 1) {
-      nextInterval = 1;
+  if (isFirstReview) {
+    // -------------------------------------------------------------
+    // First Review / Learning Phase
+    // Cards need 2 good ratings in a row before graduating/rescheduling.
+    // -------------------------------------------------------------
+    if (rating === RATINGS.AGAIN) {
+      // Again breaks streak of good ratings, stays in learning today
+      nextConsecutiveGoods = 0;
+      nextReps = 0;
+      nextInterval = 0;
+      nextState = CARD_STATES.LEARNING;
+    } else if (rating === RATINGS.HARD) {
+      // Hard breaks consecutive goods streak, stays in learning today
+      nextConsecutiveGoods = 0;
+      nextReps = 0;
+      nextInterval = 0;
+      nextState = CARD_STATES.LEARNING;
+    } else if (rating === RATINGS.GOOD) {
+      if (prev.consecutiveGoods < 1) {
+        // 1st Good rating: needs 1 more Good rating in a row to graduate!
+        nextConsecutiveGoods = 1;
+        nextReps = 1;
+        nextInterval = 0; // Not rescheduled yet (stays due today)
+        nextState = CARD_STATES.LEARNING;
+      } else {
+        // 2nd Good rating in a row: GRADUATES and reschedules for tomorrow!
+        nextConsecutiveGoods = 0;
+        nextReps = 2;
+        nextInterval = 1; // 1 day
+        nextState = CARD_STATES.REVIEW;
+      }
+    } else if (rating === RATINGS.EASY) {
+      // Easy immediately graduates the card to 4 days
+      nextConsecutiveGoods = 0;
       nextReps = 1;
-    } else {
+      nextInterval = 4;
+      nextEase = Math.min(3.5, prev.easeFactor + 0.15);
+      nextState = CARD_STATES.REVIEW;
+    }
+  } else {
+    // -------------------------------------------------------------
+    // Review Phase (Graduated cards with interval >= 1)
+    // -------------------------------------------------------------
+    if (rating === RATINGS.AGAIN) {
+      // LAPSE: Back-off interval, increase lapse count, drop ease factor
+      nextLapses += 1;
+      nextReps = 0;
+      nextInterval = 1; // Back off to 1 day
+      nextEase = Math.max(1.3, prev.easeFactor - 0.20);
+      nextState = CARD_STATES.RELEARNING;
+    } else if (rating === RATINGS.HARD) {
+      // HARD: Slower interval increase, slight ease penalty
+      nextEase = Math.max(1.3, prev.easeFactor - 0.15);
       nextInterval = Math.max(prev.interval + 1, Math.round(prev.interval * 1.2));
       nextReps += 1;
+      nextState = CARD_STATES.REVIEW;
+    } else if (rating === RATINGS.GOOD) {
+      // GOOD: Standard SM-2 interval progression
+      if (prev.interval === 1) {
+        nextInterval = 3; // Second step
+        nextReps = 2;
+      } else {
+        nextInterval = Math.max(prev.interval + 1, Math.round(prev.interval * prev.easeFactor));
+        nextReps += 1;
+      }
+      nextState = CARD_STATES.REVIEW;
+    } else if (rating === RATINGS.EASY) {
+      // EASY: High interval bonus, boost ease factor
+      nextEase = Math.min(3.5, prev.easeFactor + 0.15);
+      if (prev.interval <= 1) {
+        nextInterval = 5;
+        nextReps = 2;
+      } else {
+        nextInterval = Math.max(prev.interval + 2, Math.round(prev.interval * prev.easeFactor * 1.3));
+        nextReps += 1;
+      }
+      nextState = CARD_STATES.REVIEW;
     }
-    nextState = CARD_STATES.REVIEW;
-  } else if (rating === RATINGS.GOOD) {
-    // GOOD: Standard SM-2 interval progression
-    if (prev.state === CARD_STATES.NEW || prev.interval === 0) {
-      nextInterval = 1;
-      nextReps = 1;
-    } else if (prev.interval === 1) {
-      nextInterval = 3; // Second step
-      nextReps = 2;
-    } else {
-      nextInterval = Math.max(prev.interval + 1, Math.round(prev.interval * prev.easeFactor));
-      nextReps += 1;
-    }
-    nextState = CARD_STATES.REVIEW;
-  } else if (rating === RATINGS.EASY) {
-    // EASY: High interval bonus, boost ease factor
-    nextEase = Math.min(3.5, prev.easeFactor + 0.15);
-    if (prev.state === CARD_STATES.NEW || prev.interval === 0) {
-      nextInterval = 4;
-      nextReps = 1;
-    } else if (prev.interval <= 1) {
-      nextInterval = 5;
-      nextReps = 2;
-    } else {
-      nextInterval = Math.max(prev.interval + 2, Math.round(prev.interval * prev.easeFactor * 1.3));
-      nextReps += 1;
-    }
-    nextState = CARD_STATES.REVIEW;
   }
 
-  const nextDueDate = addDays(nextInterval, now);
+  const nextDueDate = nextInterval === 0 ? todayStr : addDays(nextInterval, now);
 
   return {
     state: nextState,
@@ -147,6 +187,7 @@ export function processReview(currentSrs = DEFAULT_SRS_DATA, rating) {
     easeFactor: Number(nextEase.toFixed(2)),
     reps: nextReps,
     lapses: nextLapses,
+    consecutiveGoods: nextConsecutiveGoods,
     dueDate: nextDueDate,
     lastReviewed: now.toISOString()
   };
@@ -215,4 +256,98 @@ export function isCardDue(card, targetDate = getDateString()) {
 
   if (!card.srs || !card.srs.dueDate) return true;
   return card.srs.dueDate <= targetDate;
+}
+
+/**
+ * Computes the exact Daily Review Queue as laid out in the 30-day calendar forecast.
+ * Introduces up to settings.dailyNewLimit (default 20) new cards per day,
+ * plus all review cards due on or before today.
+ *
+ * @param {Array} reviewItems Array of review items
+ * @param {Object} settings User settings (dailyNewLimit, etc.)
+ * @param {Array} reviewLogs Historical review logs
+ * @param {string} targetDate YYYY-MM-DD
+ * @returns {Object} { dueReviewItems, newItemsToday, sessionCards, totalDailyCount, todayNewCount, todayReviewCount, todayNewDone }
+ */
+export function getDailyReviewQueue(reviewItems = [], settings = {}, reviewLogs = [], targetDate = getDateString()) {
+  const todayStr = targetDate || getDateString();
+  const dailyNewLimit = settings?.dailyNewLimit || 20;
+
+  const dueReviewItems = [];
+  const unlearnedItems = [];
+
+  for (const item of reviewItems) {
+    const srs = item.srs || DEFAULT_SRS_DATA;
+    const isNew = srs.state === CARD_STATES.NEW || srs.interval === 0;
+
+    if (isNew) {
+      unlearnedItems.push(item);
+    } else if (isCardDue(item, todayStr)) {
+      dueReviewItems.push(item);
+    }
+  }
+
+  // Count how many new cards were already graduated/completed today in this pool
+  const itemCardIds = new Set(reviewItems.map(i => i.parentCard ? i.parentCard.id : i.id));
+  const graduatedCardIds = new Set(
+    (reviewLogs || [])
+      .filter(log => log.date === todayStr && (log.oldInterval || 0) === 0 && (log.newInterval || 0) > 0 && itemCardIds.has(log.cardId))
+      .map(log => log.cardId)
+  );
+  const todayNewDone = graduatedCardIds.size;
+
+  // Capped new items for today
+  const newQuota = Math.max(0, Math.min(dailyNewLimit - todayNewDone, unlearnedItems.length));
+  const newItemsToday = unlearnedItems.slice(0, newQuota);
+
+  return {
+    dueReviewItems,
+    newItemsToday,
+    sessionCards: [...dueReviewItems, ...newItemsToday],
+    totalDailyCount: dueReviewItems.length + newItemsToday.length,
+    todayNewCount: newItemsToday.length,
+    todayReviewCount: dueReviewItems.length,
+    todayNewDone,
+    totalUnlearnedRemaining: unlearnedItems.length - newItemsToday.length
+  };
+}
+
+/**
+ * Computes the Endless Practice Queue for uncapped review.
+ * Cards cap out once they are all set to be reviewed at a later date (dueDate > todayStr).
+ *
+ * @param {Array} reviewItems Array of review items
+ * @param {string} targetDate YYYY-MM-DD
+ * @returns {Object} { sessionCards, totalEligible, totalScheduledFuture, isCappedOut, earliestFutureDueDate }
+ */
+export function getEndlessQueue(reviewItems = [], targetDate = getDateString()) {
+  const todayStr = targetDate || getDateString();
+  const eligibleItems = [];
+  const futureDates = [];
+
+  for (const item of reviewItems) {
+    const srs = item.srs || DEFAULT_SRS_DATA;
+    const isNew = srs.state === CARD_STATES.NEW || srs.interval === 0;
+
+    if (isNew) {
+      // Unlearned cards are ALL eligible in endless (uncapped)
+      eligibleItems.push(item);
+    } else if (isCardDue(item, todayStr)) {
+      // Cards due today or overdue are eligible
+      eligibleItems.push(item);
+    } else if (srs.dueDate && srs.dueDate > todayStr) {
+      // Already scheduled for a later date
+      futureDates.push(srs.dueDate);
+    }
+  }
+
+  futureDates.sort();
+
+  return {
+    sessionCards: eligibleItems,
+    totalEligible: eligibleItems.length,
+    totalScheduledFuture: futureDates.length,
+    isCappedOut: eligibleItems.length === 0 && reviewItems.length > 0,
+    earliestFutureDueDate: futureDates[0] || null
+  };
 }

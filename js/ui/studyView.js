@@ -122,6 +122,7 @@ export class StudyView {
   }
 
   destroy() {
+    document.body.classList.remove('study-mode-active');
     if (this.keyListener) {
       window.removeEventListener('keydown', this.keyListener);
       this.keyListener = null;
@@ -129,7 +130,10 @@ export class StudyView {
   }
 
   _attachKeyListeners() {
-    this.destroy(); // Remove any previous
+    if (this.keyListener) {
+      window.removeEventListener('keydown', this.keyListener);
+      this.keyListener = null;
+    }
     this.keyListener = (e) => {
       // Don't capture keys if an input is focused or modal is open
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -208,6 +212,8 @@ export class StudyView {
       this._renderCompletion();
       return;
     }
+
+    document.body.classList.add('study-mode-active');
 
     const currentCard = this.session.cards[this.session.currentIndex];
     const currentIndex = this.session.currentIndex;

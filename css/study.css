@@ -2,12 +2,50 @@
    Study CSS: 3D Flip Card, Anki SRS Rating Buttons, Cloze, Occlusion & Confetti
    ========================================================================== */
 
+/* Full Viewport Lock for Study Arena (Prevents Page-Level Scrolling) */
+html:has(body.study-mode-active),
+body.study-mode-active {
+  overflow: hidden !important;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+}
+
+body.study-mode-active .app-main-viewport,
+.app-main-viewport:has(.study-arena) {
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+  max-height: calc(100vh - 64px);
+  max-height: calc(100dvh - 64px);
+  padding: 0.65rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+@media (max-width: 680px) {
+  body.study-mode-active .app-main-viewport,
+  .app-main-viewport:has(.study-arena) {
+    height: calc(100vh - 56px);
+    height: calc(100dvh - 56px);
+    max-height: calc(100vh - 56px);
+    max-height: calc(100dvh - 56px);
+    padding: 0.45rem 0.65rem;
+  }
+}
+
 .study-arena {
   max-width: 900px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 100%;
+  gap: 0.65rem;
+  overflow: hidden;
 }
 
 /* Study Session Header */
@@ -16,6 +54,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .study-session-meta {
@@ -60,6 +99,7 @@
   background-color: var(--bg-subtle);
   border-radius: var(--radius-full);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .study-progress-bar {
@@ -69,17 +109,21 @@
   transition: width 0.3s ease;
 }
 
-/* 3D Perspective Card Stage */
+/* 3D Perspective Card Stage - Dynamic Flex Scaling */
 .study-card-stage {
   perspective: 1400px;
-  min-height: 520px;
-  height: clamp(520px, 78vh, 740px);
-  display: flex;
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  position: relative;
 }
 
 .study-card-perspective {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  position: relative;
+  height: 100%;
   cursor: pointer;
 }
 
@@ -109,7 +153,7 @@
   background-color: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 1.25rem 1.75rem;
+  padding: 1.15rem 1.5rem;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -160,8 +204,8 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 0.65rem;
-  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
   flex-shrink: 0;
 }
 
@@ -180,16 +224,18 @@
 
 /* Card Content Typography & Elements */
 .card-face-content {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
   align-items: center;
   text-align: center;
   padding: 0.25rem 0;
   min-height: 0; /* Critical for flex children scaling */
   width: 100%;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .study-heading {
@@ -197,51 +243,54 @@
   font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-main);
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.35rem;
   flex-shrink: 0;
 }
 
 .study-text {
   font-size: 1.35rem;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--text-main);
   max-width: 680px;
+  margin: auto 0;
 }
 
 .study-image-media {
   max-width: 100%;
-  max-height: calc(clamp(520px, 78vh, 740px) - 150px);
+  max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
   border-radius: var(--radius-md);
-  margin: 0.5rem 0;
+  margin: auto 0;
   box-shadow: var(--shadow-sm);
 }
 
 .study-image-thumb {
-  max-height: 160px;
-  margin-bottom: 0.75rem;
+  max-height: 140px;
+  margin-bottom: 0.5rem;
+  object-fit: contain;
 }
 
 .study-hint-note {
   font-size: 0.8rem;
   color: var(--text-muted);
-  margin-top: 0.4rem;
+  margin-top: 0.35rem;
   flex-shrink: 0;
 }
 
 .answer-text-highlight {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--primary);
   line-height: 1.5;
   background-color: var(--primary-light);
-  padding: 1.15rem 1.75rem;
+  padding: 1rem 1.5rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   max-width: 680px;
+  margin: auto 0;
 }
 
 /* ==========================================================================
@@ -257,6 +306,7 @@
   height: 100%;
   max-height: 100%;
   min-height: 0;
+  flex: 1 1 0%;
   overflow: hidden;
 }
 
@@ -273,7 +323,7 @@
 .occlusion-study-image {
   display: block;
   max-width: 100%;
-  max-height: calc(clamp(520px, 78vh, 740px) - 140px);
+  max-height: 100%;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -466,7 +516,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 64px;
+  flex-shrink: 0;
+  min-height: 48px;
 }
 
 .btn-flip-action {

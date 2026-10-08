@@ -4,7 +4,7 @@
  */
 
 import { storage } from '../storage.js';
-import { isCardDue, formatInterval, getDailyReviewQueue } from '../srs.js';
+import { isCardDue, formatInterval, getDailyReviewQueue, getDateString } from '../srs.js';
 import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
 export class TreeView {
@@ -62,7 +62,7 @@ export class TreeView {
     const dueCounts = {};
     const settings = await storage.getSettings();
     const reviewLogs = await storage.getReviewLogs();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getDateString();
 
     for (const group of groups) {
       const subIds = await storage.getSubgroupIds(group.id);

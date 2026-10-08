@@ -8,7 +8,7 @@
  */
 
 import { storage } from '../storage.js';
-import { isCardDue, getDailyReviewQueue } from '../srs.js';
+import { isCardDue, getDailyReviewQueue, getDateString } from '../srs.js';
 import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
 export async function renderDashboard(container, navigateTo) {
@@ -76,7 +76,7 @@ export async function renderDashboard(container, navigateTo) {
   // Calculate 30-Day Calendar & Forecast (31 Days: -5 to +25)
   // -------------------------------------------------------------
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getDateString(now);
 
   // Logs for cards in focus (or general logs if no focus active)
   const focusedLogs = isFocusActive
@@ -91,10 +91,28 @@ export async function renderDashboard(container, navigateTo) {
   // Compute counts for Hero & Badges based on active focus
   const totalCards = activeCards.reduce((sum, c) => sum + getCardCount(c), 0);
   const totalDueCards = dailyQueue.totalDailyCount;
-  const reviewCards = activeCards.filter(c => c.srs && c.srs.state === 'review');
+  const masteredOrLearningCards = activeCards.filter(c => {
+    if (c.srs && (c.srs.state === 'review' || c.srs.state === 'learning' || (c.srs.interval && c.srs.interval > 0) || (c.srs.reps && c.srs.reps > 0))) {
+      return true;
+    }
+    if (c.clozeSrs && typeof c.clozeSrs === 'object') {
+      if (Object.values(c.clozeSrs).some(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0)))) {
+        return true;
+      }
+    }
+    if (c.boxSrs && typeof c.boxSrs === 'object') {
+      if (Object.values(c.boxSrs).some(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0)))) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   const targetDailyGoal = settings.dailyNewLimit || 20;
-  const cardsReviewedToday = settings.cardsReviewedToday || 0;
+  const todayLogs = (reviewLogs || []).filter(log => log.date === todayStr);
+  const cardsReviewedToday = settings.lastActiveDate === todayStr 
+    ? (settings.cardsReviewedToday || todayLogs.length) 
+    : todayLogs.length;
   const progressPercent = Math.min(100, Math.round((cardsReviewedToday / targetDailyGoal) * 100));
 
   // Root groups (Classes)
@@ -214,7 +232,7 @@ export async function renderDashboard(container, navigateTo) {
   const daysData = [];
   for (let offset = -5; offset <= 25; offset++) {
     const dateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    const dateStr = dateObj.toISOString().split('T')[0];
+    const dateStr = getDateString(dateObj);
     
     let newCount = 0;
     let reviewCount = 0;
@@ -518,7 +536,7 @@ export async function renderDashboard(container, navigateTo) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
           </div>
           <div class="stat-info">
-            <div class="stat-number">${reviewCards.length}</div>
+            <div class="stat-number">${masteredOrLearningCards.length}</div>
             <div class="stat-title">Mastered / Learning</div>
           </div>
         </div>

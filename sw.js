@@ -4,7 +4,7 @@
  * and background asset updates via GitHub.
  */
 
-const CACHE_NAME = 'studycards-v10';
+const CACHE_NAME = 'studycards-v12';
 
 const STATIC_ASSETS = [
   './',

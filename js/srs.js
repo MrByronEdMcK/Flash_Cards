@@ -17,6 +17,50 @@ export const RATINGS = {
   EASY: 4   // Instant, effortless recall
 };
 
+/**
+ * Safely parse a date or date string (YYYY-MM-DD) into a local Date object.
+ * Avoids UTC shifting that occurs with new Date('YYYY-MM-DD').
+ * @param {string|Date} dateInput 
+ * @returns {Date}
+ */
+export function parseDateLocal(dateInput = new Date()) {
+  if (dateInput instanceof Date) {
+    return new Date(dateInput.getTime());
+  }
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+    const [y, m, d] = dateInput.split('-').map(Number);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
+  }
+  const parsed = new Date(dateInput);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+/**
+ * Get date string formatted as YYYY-MM-DD in the user's local timezone
+ * @param {Date|string} [date] 
+ * @returns {string}
+ */
+export function getDateString(date = new Date()) {
+  const d = parseDateLocal(date);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Add days to a given date string or current date using local date arithmetic
+ * @param {number} days 
+ * @param {string|Date} [baseDate] 
+ * @returns {string} YYYY-MM-DD
+ */
+export function addDays(days, baseDate = new Date()) {
+  const d = parseDateLocal(baseDate);
+  d.setDate(d.getDate() + days);
+  return getDateString(d);
+}
+
 export const DEFAULT_SRS_DATA = {
   state: CARD_STATES.NEW,
   interval: 0,       // In days
@@ -24,7 +68,7 @@ export const DEFAULT_SRS_DATA = {
   reps: 0,           // Successful consecutive repetitions
   lapses: 0,         // Number of times card was forgotten
   consecutiveGoods: 0, // Number of consecutive good ratings in first review / learning phase
-  dueDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+  dueDate: getDateString(), // YYYY-MM-DD in user's local timezone
   lastReviewed: null
 };
 
@@ -46,27 +90,6 @@ export function formatInterval(days, state) {
   }
   const years = (days / 365).toFixed(1);
   return `${years} yr`;
-}
-
-/**
- * Get date string formatted as YYYY-MM-DD
- * @param {Date} [date] 
- * @returns {string}
- */
-export function getDateString(date = new Date()) {
-  return date.toISOString().split('T')[0];
-}
-
-/**
- * Add days to a given date string or current date
- * @param {number} days 
- * @param {string|Date} [baseDate] 
- * @returns {string} YYYY-MM-DD
- */
-export function addDays(days, baseDate = new Date()) {
-  const d = new Date(baseDate);
-  d.setDate(d.getDate() + days);
-  return getDateString(d);
 }
 
 /**

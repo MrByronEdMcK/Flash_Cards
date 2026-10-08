@@ -1023,11 +1023,15 @@
   font-size: 0.92rem;
   color: var(--text-main);
   margin-bottom: 0.35rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .card-item-back {
   font-size: 0.86rem;
   color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .card-item-actions {

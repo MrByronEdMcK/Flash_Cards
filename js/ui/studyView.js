@@ -10,6 +10,7 @@ import {
   isCardDue,
   getDailyReviewQueue,
   getEndlessQueue,
+  getDateString,
   RATINGS, 
   CARD_STATES 
 } from '../srs.js';
@@ -72,7 +73,7 @@ export class StudyView {
     let earliestFutureDueDate = null;
 
     const reviewLogs = await storage.getReviewLogs();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getDateString();
 
     if (mode === 'daily') {
       const dailyQueue = getDailyReviewQueue(allReviewItems, settings, reviewLogs, todayStr);
@@ -555,12 +556,14 @@ export class StudyView {
       parentCard.boxSrs = parentCard.boxSrs || {};
       parentCard.boxSrs[currentItem.targetBoxId] = newSrs;
 
-      // Update parentCard.srs.dueDate to earliest dueDate among all its boxes
+      // Update parentCard.srs with state and earliest dueDate among all its boxes
       const allDueDates = Object.values(parentCard.boxSrs).map(s => s.dueDate).filter(Boolean);
       if (allDueDates.length > 0) {
         allDueDates.sort();
         parentCard.srs = {
-          ...parentCard.srs,
+          ...(parentCard.srs || {}),
+          state: newSrs.state,
+          interval: Math.max(parentCard.srs?.interval || 0, newSrs.interval),
           dueDate: allDueDates[0]
         };
       }
@@ -568,12 +571,14 @@ export class StudyView {
       parentCard.clozeSrs = parentCard.clozeSrs || {};
       parentCard.clozeSrs[`c${currentItem.targetClozeNum}`] = newSrs;
 
-      // Update parentCard.srs.dueDate to earliest dueDate among all its clozes
+      // Update parentCard.srs with state and earliest dueDate among all its clozes
       const allDueDates = Object.values(parentCard.clozeSrs).map(s => s.dueDate).filter(Boolean);
       if (allDueDates.length > 0) {
         allDueDates.sort();
         parentCard.srs = {
-          ...parentCard.srs,
+          ...(parentCard.srs || {}),
+          state: newSrs.state,
+          interval: Math.max(parentCard.srs?.interval || 0, newSrs.interval),
           dueDate: allDueDates[0]
         };
       }

@@ -6,6 +6,7 @@
 import { storage } from '../storage.js';
 import { GROUP_TYPES, CARD_TYPES, createGroup, createCard } from '../models.js';
 import { IMPORT_SERVICES, parseImport } from '../importers.js';
+import { getDateString } from '../srs.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -235,6 +236,32 @@ export class ModalManager {
                 <div id="panel-import-paste" class="import-panel hidden">
                   <textarea class="form-input form-textarea font-mono" id="textarea-import-paste" rows="4" placeholder="Paste your exported flashcard text here...&#10;Example:&#10;Mitochondria&#9;The powerhouse of the cell&#10;Chloroplast&#9;Site of photosynthesis in plants"></textarea>
                 </div>
+
+                <!-- Delimiter / Separator Options (Quizlet, CSV, Text) -->
+                <div id="group-delimiter-options" class="form-group" style="margin-top: 10px; background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem;">
+                  <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;">
+                    Delimiter Options (Quizlet / Delimited Text)
+                  </div>
+                  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 140px;">
+                      <label class="form-label" style="font-size: 0.78rem; margin-bottom: 3px;" for="select-card-sep">Cards Separated By:</label>
+                      <select class="form-input form-input-sm" id="select-card-sep">
+                        <option value="auto">✨ Auto-Detect (Newline or Semicolon)</option>
+                        <option value="semicolon">Semicolon ( ; ) (Multi-line cards)</option>
+                        <option value="newline">New Line ( \n )</option>
+                      </select>
+                    </div>
+                    <div style="flex: 1; min-width: 140px;">
+                      <label class="form-label" style="font-size: 0.78rem; margin-bottom: 3px;" for="select-field-sep">Question &amp; Answer Separated By:</label>
+                      <select class="form-input form-input-sm" id="select-field-sep">
+                        <option value="auto">✨ Auto-Detect (Tab or Comma)</option>
+                        <option value="comma">Comma ( , )</option>
+                        <option value="tab">Tab ( \t )</option>
+                        <option value="semicolon">Semicolon ( ; )</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Destination Selector (For card imports) -->
@@ -402,7 +429,7 @@ export class ModalManager {
 
       const a = document.createElement('a');
       a.href = url;
-      const datePart = new Date().toISOString().split('T')[0];
+      const datePart = getDateString();
       a.download = targetGroupId ? `StudyCards_Deck_${datePart}.json` : `StudyCards_Backup_${datePart}.json`;
       document.body.appendChild(a);
       a.click();
@@ -420,6 +447,9 @@ export class ModalManager {
 
     const selectService = el.querySelector('#select-import-service');
     const guideBox = el.querySelector('#import-service-guide');
+    const groupDelimiterOptions = el.querySelector('#group-delimiter-options');
+    const selectCardSep = el.querySelector('#select-card-sep');
+    const selectFieldSep = el.querySelector('#select-field-sep');
     const btnModeFile = el.querySelector('#btn-mode-file');
     const btnModePaste = el.querySelector('#btn-mode-paste');
     const panelFile = el.querySelector('#panel-import-file');
@@ -457,6 +487,13 @@ export class ModalManager {
 
     // Service Guide updates
     const updateServiceGuide = (serviceKey) => {
+      if (groupDelimiterOptions) {
+        if (serviceKey === 'studycards') {
+          groupDelimiterOptions.classList.add('hidden');
+        } else {
+          groupDelimiterOptions.classList.remove('hidden');
+        }
+      }
       const s = IMPORT_SERVICES[serviceKey];
       if (s && s.instructions) {
         guideBox.innerHTML = `<strong>How to export from ${escapeHtml(s.name)}:</strong><br/>${escapeHtml(s.instructions)}`;
@@ -475,6 +512,13 @@ export class ModalManager {
       updateServiceGuide(val);
       runParseAndPreview();
     });
+
+    if (selectCardSep) {
+      selectCardSep.addEventListener('change', () => runParseAndPreview());
+    }
+    if (selectFieldSep) {
+      selectFieldSep.addEventListener('change', () => runParseAndPreview());
+    }
 
     // Input mode switcher
     btnModeFile.onclick = () => {
@@ -580,9 +624,23 @@ export class ModalManager {
         return;
       }
 
+      const cardSepVal = selectCardSep ? selectCardSep.value : 'auto';
+      const fieldSepVal = selectFieldSep ? selectFieldSep.value : 'auto';
+
+      let cardSep = null;
+      if (cardSepVal === 'semicolon') cardSep = ';';
+      else if (cardSepVal === 'newline') cardSep = '\n';
+
+      let fieldSep = null;
+      if (fieldSepVal === 'comma') fieldSep = ',';
+      else if (fieldSepVal === 'tab') fieldSep = '\t';
+      else if (fieldSepVal === 'semicolon') fieldSep = ';';
+
       const parsed = parseImport(rawText, chosenService, {
         fileName: currentFileName,
-        deckName: inputDeckName.value.trim()
+        deckName: inputDeckName.value.trim(),
+        cardSeparator: cardSep,
+        fieldSeparator: fieldSep
       });
       currentParsed = parsed;
 
@@ -635,12 +693,18 @@ export class ModalManager {
       // Successful card parsing
       previewTitle.innerHTML = `<span>✅</span> <span>Detected <strong>${parsed.serviceName}</strong>: <strong>${parsed.cards.length} cards</strong> ready to import</span>`;
 
-      // Card type badges
+      // Card type badges & Separator info badge
       const types = parsed.stats.cardTypes || {};
       let badgesHtml = '';
       if (types.basic) badgesHtml += `<span class="type-tag-badge basic">${types.basic} Basic</span>`;
       if (types.cloze) badgesHtml += `<span class="type-tag-badge cloze">${types.cloze} Cloze</span>`;
       if (types.reversible) badgesHtml += `<span class="type-tag-badge reversible">${types.reversible} Reversible</span>`;
+
+      if (parsed.detectedSeparators) {
+        const cSep = parsed.detectedSeparators.cardSeparator === ';' ? 'Cards: Semicolon (;)' : 'Cards: Newline (\\n)';
+        const fSep = parsed.detectedSeparators.fieldSeparator === '\t' ? 'Q&A: Tab (⇥)' : (parsed.detectedSeparators.fieldSeparator === ',' ? 'Q&A: Comma (,)' : `Q&A: ${parsed.detectedSeparators.fieldSeparator}`);
+        badgesHtml += `<span class="type-tag-badge" style="background: var(--bg-subtle); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.72rem;">${escapeHtml(cSep)} • ${escapeHtml(fSep)}</span>`;
+      }
       previewBadges.innerHTML = badgesHtml;
 
       // Warnings / Skipped Rows
@@ -664,11 +728,11 @@ export class ModalManager {
         <div class="sample-card-item">
           <div class="sample-card-row">
             <span class="sample-card-lbl">Front:</span>
-            <span class="sample-card-val">${escapeHtml(c.front || c.clozeText)}</span>
+            <span class="sample-card-val" style="white-space: pre-wrap; word-break: break-word; max-height: 5em; overflow-y: auto;">${escapeHtml(c.front || c.clozeText)}</span>
           </div>
           <div class="sample-card-row">
             <span class="sample-card-lbl">Back:</span>
-            <span class="sample-card-val">${escapeHtml(c.back || '[Cloze Deletion]')}</span>
+            <span class="sample-card-val" style="white-space: pre-wrap; word-break: break-word; max-height: 5em; overflow-y: auto;">${escapeHtml(c.back || '[Cloze Deletion]')}</span>
           </div>
         </div>
       `).join('');
@@ -850,6 +914,11 @@ export class ModalManager {
     if (destRadioNew) destRadioNew.checked = true;
     if (inputDeckName) inputDeckName.disabled = false;
     if (selectTarget) selectTarget.disabled = true;
+
+    const selectCardSep = this.ioModalEl.querySelector('#select-card-sep');
+    if (selectCardSep) selectCardSep.value = 'auto';
+    const selectFieldSep = this.ioModalEl.querySelector('#select-field-sep');
+    if (selectFieldSep) selectFieldSep.value = 'auto';
 
     this.ioModalEl.classList.remove('hidden');
   }

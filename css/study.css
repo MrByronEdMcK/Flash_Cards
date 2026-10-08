@@ -254,6 +254,8 @@ body.study-mode-active .app-main-viewport,
   color: var(--text-main);
   max-width: 680px;
   margin: auto 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .study-image-media {
@@ -291,6 +293,9 @@ body.study-mode-active .app-main-viewport,
   border: 1px solid var(--border-color);
   max-width: 680px;
   margin: auto 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
 }
 
 /* ==========================================================================
@@ -464,6 +469,8 @@ body.study-mode-active .app-main-viewport,
   font-size: 0.95rem;
   color: var(--text-muted);
   font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Hint Toggle in Card */

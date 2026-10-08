@@ -28,8 +28,8 @@ export const IMPORT_SERVICES = {
     id: 'quizlet',
     name: 'Quizlet',
     icon: '🔵',
-    description: 'Supports Quizlet text, TSV, and CSV exports.',
-    instructions: 'In Quizlet, open your set, click the "..." menu ➔ "Export", then copy the text or download the file.',
+    description: 'Supports Quizlet text, TSV, CSV, and semicolon-separated exports with multi-line cards.',
+    instructions: 'In Quizlet, open your set, click the "..." menu ➔ "Export", then copy the text or download the file. If cards contain multiple lines, choose "Between cards: Semicolon". StudyCards automatically detects both newline and semicolon-separated cards!',
     acceptedExts: '.txt,.tsv,.csv'
   },
   anki: {
@@ -319,7 +319,7 @@ export function parseImport(rawText, serviceId = 'auto', options = {}) {
       result = parseStudyCardsJson(rawText);
       break;
     case 'quizlet':
-      result = parseQuizlet(rawText);
+      result = parseQuizlet(rawText, options);
       break;
     case 'anki':
       result = parseAnki(rawText);
@@ -334,11 +334,11 @@ export function parseImport(rawText, serviceId = 'auto', options = {}) {
       result = parseCram(rawText);
       break;
     case 'knowt':
-      result = parseKnowt(rawText);
+      result = parseKnowt(rawText, options);
       break;
     case 'delimited':
     default:
-      result = parseDelimited(rawText);
+      result = parseDelimited(rawText, options);
       break;
   }
 
@@ -360,10 +360,162 @@ export const parseImportData = (rawText, serviceId = 'auto', filename = '') =>
   parseImport(rawText, serviceId, { fileName: filename });
 
 /**
- * 1. Parse Quizlet Export
+ * Detect Quizlet separators (card separator and term/definition separator)
+ * Auto-detects whether cards are separated by semicolon (;) or newline (\n),
+ * and whether fields are separated by comma (,) or tab (\t).
  */
-export function parseQuizlet(text) {
-  const rows = parseDelimitedRows(text);
+export function detectQuizletSeparators(text, preferredCardSep = null, preferredFieldSep = null) {
+  let cardSep = preferredCardSep && preferredCardSep !== 'auto' ? preferredCardSep : null;
+  let fieldSep = preferredFieldSep && preferredFieldSep !== 'auto' ? preferredFieldSep : null;
+
+  const clean = text.replace(/^\uFEFF/, '').trim();
+  const semiCount = (clean.match(/;/g) || []).length;
+  const tabCount = (clean.match(/\t/g) || []).length;
+  const commaCount = (clean.match(/,/g) || []).length;
+
+  if (!cardSep) {
+    if (semiCount >= 2) {
+      const semiChunks = clean.split(';').map(c => c.trim()).filter(Boolean);
+      const semiCommaHits = semiChunks.filter(c => c.includes(',')).length;
+      const semiTabHits = semiChunks.filter(c => c.includes('\t')).length;
+      const semiValidHits = Math.max(semiCommaHits, semiTabHits);
+      const semiRatio = semiChunks.length > 0 ? semiValidHits / semiChunks.length : 0;
+
+      const lines = clean.split(/\r?\n/).map(c => c.trim()).filter(Boolean);
+      const lineCommaHits = lines.filter(c => c.includes(',')).length;
+      const lineTabHits = lines.filter(c => c.includes('\t')).length;
+      const lineValidHits = Math.max(lineCommaHits, lineTabHits);
+      const lineRatio = lines.length > 0 ? lineValidHits / lines.length : 0;
+
+      // If semicolon splitting gives a higher proportion of valid cards or ends with ';'
+      if (semiRatio >= 0.6 && (semiRatio > lineRatio || clean.endsWith(';'))) {
+        cardSep = ';';
+      } else {
+        cardSep = '\n';
+      }
+    } else {
+      cardSep = '\n';
+    }
+  }
+
+  if (!fieldSep) {
+    if (cardSep === ';') {
+      const chunks = clean.split(';').map(c => c.trim()).filter(Boolean);
+      const tabHits = chunks.filter(c => c.includes('\t')).length;
+      const commaHits = chunks.filter(c => c.includes(',')).length;
+      if (tabHits >= commaHits && tabHits > 0) fieldSep = '\t';
+      else if (commaHits > 0) fieldSep = ',';
+      else fieldSep = ',';
+    } else {
+      const sample = clean.split(/\r?\n/).slice(0, 10).join('\n');
+      const sampleTabs = (sample.match(/\t/g) || []).length;
+      const sampleCommas = (sample.match(/,/g) || []).length;
+      if (sampleTabs >= 2 && sampleTabs >= sampleCommas) fieldSep = '\t';
+      else if (sampleCommas >= 2) fieldSep = ',';
+      else fieldSep = '\t';
+    }
+  }
+
+  return { cardSeparator: cardSep, fieldSeparator: fieldSep };
+}
+
+/**
+ * 1. Parse Quizlet Export
+ * Supports both standard newline-separated exports and semicolon-separated exports
+ * (commonly used when cards contain multi-line text, lists, and bullet points).
+ */
+export function parseQuizlet(text, options = {}) {
+  const cleanText = text.replace(/^\uFEFF/, '').trim();
+  if (!cleanText) {
+    return buildResult('Quizlet', [], [], 0);
+  }
+
+  const { cardSeparator, fieldSeparator } = detectQuizletSeparators(
+    cleanText,
+    options?.cardSeparator,
+    options?.fieldSeparator
+  );
+
+  if (cardSeparator === ';') {
+    // Semicolon-separated cards (Quizlet export with "Between cards: Semicolon")
+    // Correctly preserves newlines, bullet lists, and multi-line answers within cards
+    const rawChunks = cleanText.split(';');
+    const cards = [];
+    const warnings = [];
+    let lineNum = 0;
+
+    for (let i = 0; i < rawChunks.length; i++) {
+      const chunk = rawChunks[i].trim();
+      if (!chunk) continue;
+      lineNum++;
+
+      if (chunk.includes(fieldSeparator)) {
+        let sepIdx = -1;
+
+        // Smart delimiter boundary: if question ends with ? followed by fieldSeparator
+        // e.g. "What are humans: class, order, superfamily and tribe?,class-mammalia..."
+        if (chunk.includes('?' + fieldSeparator)) {
+          sepIdx = chunk.indexOf('?' + fieldSeparator) + 1;
+        } else if (chunk.includes('?\n' + fieldSeparator)) {
+          sepIdx = chunk.indexOf('?\n' + fieldSeparator) + 2;
+        } else {
+          sepIdx = chunk.indexOf(fieldSeparator);
+        }
+
+        const front = chunk.substring(0, sepIdx).trim();
+        const back = chunk.substring(sepIdx + fieldSeparator.length).trim();
+
+        if (!front && !back) continue;
+
+        if (!front) {
+          warnings.push({
+            line: lineNum,
+            reason: 'Missing term/question (front is empty)',
+            rawSnippet: back.substring(0, 40)
+          });
+          continue;
+        }
+        if (!back) {
+          warnings.push({
+            line: lineNum,
+            reason: 'Missing definition/answer (back is empty)',
+            rawSnippet: front.substring(0, 40)
+          });
+          continue;
+        }
+
+        cards.push({
+          front: cleanHtml(front),
+          back: cleanHtml(back),
+          hint: '',
+          tags: ['quizlet'],
+          type: CARD_TYPES.BASIC,
+          clozeText: '',
+          sourceLine: lineNum
+        });
+      } else {
+        // Chunk does not contain fieldSeparator:
+        // Occurs when an unescaped semicolon was inside a card's definition text
+        if (cards.length > 0) {
+          cards[cards.length - 1].back += '; ' + cleanHtml(chunk);
+        } else {
+          warnings.push({
+            line: lineNum,
+            reason: 'Orphaned text fragment without term separator',
+            rawSnippet: chunk.substring(0, 40)
+          });
+        }
+      }
+    }
+
+    const totalValidChunks = rawChunks.filter(c => c.trim()).length;
+    const result = buildResult('Quizlet', cards, warnings, totalValidChunks);
+    result.detectedSeparators = { cardSeparator, fieldSeparator };
+    return result;
+  }
+
+  // Standard newline-separated cards
+  const rows = parseDelimitedRows(cleanText, fieldSeparator);
   const cards = [];
   const warnings = [];
   let lineNum = 0;
@@ -375,7 +527,7 @@ export function parseQuizlet(text) {
     }
 
     const front = (row[0] || '').trim();
-    const back = (row.slice(1).join('\t') || '').trim();
+    const back = (row.slice(1).join(fieldSeparator === '\t' ? '\t' : ', ') || '').trim();
 
     if (!front && !back) continue;
 
@@ -399,7 +551,9 @@ export function parseQuizlet(text) {
     });
   }
 
-  return buildResult('Quizlet', cards, warnings, rows.length);
+  const result = buildResult('Quizlet', cards, warnings, rows.length);
+  result.detectedSeparators = { cardSeparator, fieldSeparator };
+  return result;
 }
 
 /**
@@ -728,14 +882,22 @@ export function parseKnowt(text) {
   }
 
   // Otherwise Quizlet-style text or CSV
-  return parseQuizlet(text);
+  return parseQuizlet(text, options);
 }
 
 /**
  * 7. Universal Delimited Parser (CSV, TSV, Semicolon, Custom)
  */
-export function parseDelimited(text, customDelimiter = null) {
-  const rows = parseDelimitedRows(text, customDelimiter);
+export function parseDelimited(text, options = null) {
+  const customFieldSep = typeof options === 'string' ? options : (options?.fieldSeparator && options.fieldSeparator !== 'auto' ? options.fieldSeparator : null);
+  const cardSep = options && typeof options === 'object' && options.cardSeparator && options.cardSeparator !== 'auto' ? options.cardSeparator : null;
+
+  const detected = detectQuizletSeparators(text, cardSep, customFieldSep);
+  if (detected.cardSeparator === ';') {
+    return parseQuizlet(text, { cardSeparator: ';', fieldSeparator: detected.fieldSeparator });
+  }
+
+  const rows = parseDelimitedRows(text, detected.fieldSeparator);
   const cards = [];
   const warnings = [];
   let lineNum = 0;
@@ -785,7 +947,9 @@ export function parseDelimited(text, customDelimiter = null) {
     });
   }
 
-  return buildResult('Delimited File', cards, warnings, rows.length);
+  const res = buildResult('Delimited File', cards, warnings, rows.length);
+  res.detectedSeparators = detected;
+  return res;
 }
 
 /**

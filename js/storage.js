@@ -5,6 +5,7 @@
  */
 
 import { getSampleData, createDefaultSettings, getGeneralKnowledgeData } from './models.js';
+import { getDateString, addDays } from './srs.js';
 
 const DB_NAME = 'FlashCardsDB';
 const DB_VERSION = 1;
@@ -24,8 +25,6 @@ class StorageService {
 
     try {
       this.db = await this._openDB();
-      // Purge any legacy demo review logs from previous sessions
-      await this._purgeDemoReviewLogs();
       // Purge legacy Biology and Spanish demo decks
       await this._purgeLegacyDemoDecks();
 
@@ -51,27 +50,6 @@ class StorageService {
             focused.unshift('grp_gk');
             settings.focusedGroupIds = focused;
             await this.saveSettings(settings);
-          }
-        }
-      }
-
-      // If user has no real reviews logged, ensure all cards start as clean unlearned cards
-      const userLogs = await this.getReviewLogs();
-      if (userLogs.length === 0) {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const allCards = await this.getCards();
-        for (const c of allCards) {
-          if (c.srs && (c.srs.state !== 'new' || c.srs.interval !== 0 || c.srs.reps !== 0)) {
-            c.srs = {
-              state: 'new',
-              interval: 0,
-              easeFactor: 2.5,
-              reps: 0,
-              lapses: 0,
-              dueDate: todayStr,
-              lastReviewed: null
-            };
-            await this.saveCard(c);
           }
         }
       }
@@ -256,7 +234,7 @@ class StorageService {
    * Resets SRS data back to 'new' state so cards re-enter daily and endless review queues.
    */
   async resetReviewData(groupId = null, includeSubgroups = true) {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getDateString();
     const cards = await this.getCards(groupId, includeSubgroups);
     let resetCount = 0;
 
@@ -286,7 +264,7 @@ class StorageService {
   async resetCardReviewData(cardId) {
     const card = await this.getCard(cardId);
     if (!card) return null;
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getDateString();
     card.srs = {
       state: 'new',
       interval: 0,
@@ -305,9 +283,22 @@ class StorageService {
 
   // --- Settings API ---
   async getSettings() {
-    if (!this.isIndexedDBAvailable) return this._lsGetSettings();
-    const res = await this._getByKey('settings', 'user_settings');
-    return res ? res.value : createDefaultSettings();
+    let settings;
+    if (!this.isIndexedDBAvailable) {
+      settings = this._lsGetSettings();
+    } else {
+      const res = await this._getByKey('settings', 'user_settings');
+      settings = res ? res.value : createDefaultSettings();
+    }
+    const today = getDateString();
+    if (settings && settings.lastActiveDate !== today) {
+      settings.cardsReviewedToday = 0;
+      const yesterday = addDays(-1, today);
+      if (settings.lastActiveDate && settings.lastActiveDate !== yesterday) {
+        settings.streak = 0;
+      }
+    }
+    return settings;
   }
 
   async saveSettings(settings) {
@@ -317,10 +308,12 @@ class StorageService {
 
   // --- Review Logging ---
   async logReview(cardId, rating, oldSrs, newSrs) {
+    const today = getDateString();
     const log = {
+      id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       cardId,
       rating,
-      date: new Date().toISOString().split('T')[0],
+      date: today,
       timestamp: new Date().toISOString(),
       oldInterval: oldSrs ? oldSrs.interval : 0,
       newInterval: newSrs ? newSrs.interval : 0
@@ -336,12 +329,9 @@ class StorageService {
 
     // Update settings daily count and streak
     const settings = await this.getSettings();
-    const today = new Date().toISOString().split('T')[0];
     
     if (settings.lastActiveDate !== today) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayStr = addDays(-1, today);
       
       if (settings.lastActiveDate === yesterdayStr) {
         settings.streak = (settings.streak || 0) + 1;
@@ -364,26 +354,7 @@ class StorageService {
   }
 
   async _purgeDemoReviewLogs() {
-    try {
-      if (this.isIndexedDBAvailable && this.db) {
-        const allLogs = await this._getAllFromStore('reviews');
-        for (const log of allLogs) {
-          // Demo logs either have numeric auto-increment IDs or IDs that do not start with 'rev_'
-          const isDemo = typeof log.id === 'number' || (typeof log.id === 'string' && !log.id.startsWith('rev_'));
-          if (isDemo) {
-            await this._deleteFromStore('reviews', log.id);
-          }
-        }
-      }
-      const lsRaw = localStorage.getItem('fc_reviews');
-      if (lsRaw) {
-        const lsLogs = JSON.parse(lsRaw || '[]');
-        const filtered = lsLogs.filter(log => typeof log.id === 'string' && log.id.startsWith('rev_'));
-        localStorage.setItem('fc_reviews', JSON.stringify(filtered));
-      }
-    } catch (e) {
-      console.warn('Failed to purge demo review logs:', e);
-    }
+    // Retained for backward interface compatibility; no-op to protect review history.
   }
 
   async _purgeLegacyDemoDecks() {
@@ -652,7 +623,16 @@ class StorageService {
   }
 
   _lsGetSettings() {
-    return JSON.parse(localStorage.getItem('fc_settings') || 'null') || createDefaultSettings();
+    const settings = JSON.parse(localStorage.getItem('fc_settings') || 'null') || createDefaultSettings();
+    const today = getDateString();
+    if (settings && settings.lastActiveDate !== today) {
+      settings.cardsReviewedToday = 0;
+      const yesterday = addDays(-1, today);
+      if (settings.lastActiveDate && settings.lastActiveDate !== yesterday) {
+        settings.streak = 0;
+      }
+    }
+    return settings;
   }
 
   _lsSaveSettings(settings) {

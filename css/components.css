@@ -1187,6 +1187,9 @@
 }
 
 .form-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   font-family: var(--font-sans);
   font-size: 0.95rem;
   padding: 0.65rem 0.85rem;
@@ -2336,6 +2339,60 @@
   padding-left: 1.5rem;
 }
 
+/* Delimiter & Separator Customisation Card */
+.delimiter-options-card {
+  margin-top: 0.85rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.delimiter-options-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.delimiter-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  width: 100%;
+}
+
+.delimiter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.delimiter-field .form-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 580px) {
+  .delimiter-options-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}
+
 /* Pre-Import Digest & Preview Box */
 .import-preview-box {
   background: var(--bg-surface);
@@ -2594,5 +2651,227 @@
   margin-top: 0.5rem;
 }
 
+/* ==========================================================================
+   AI Prompt Template & Gizmo.ai Importer Styles
+   ========================================================================== */
 
+/* AI Prompt Template Banner in Import Tab */
+.ai-prompt-banner {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
 
+.ai-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ai-banner-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.ai-banner-title {
+  display: block;
+  font-size: 0.92rem;
+  color: var(--text-main);
+  margin-bottom: 0.15rem;
+}
+
+.ai-banner-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* Gizmo.ai Share Link Input Panel */
+.gizmo-link-panel {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.65rem;
+}
+
+.gizmo-link-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.gizmo-link-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.gizmo-link-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.gizmo-link-input-group input {
+  flex: 1;
+}
+
+.gizmo-fetch-status {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+/* AI Prompt Template Tab Container */
+.ai-template-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ai-template-header {
+  text-align: left;
+}
+
+.ai-template-badge {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.02em;
+}
+
+.ai-template-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 0.35rem 0;
+}
+
+.ai-template-subtitle {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.ai-template-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ai-types-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.ai-type-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+
+.ai-type-pill .type-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.ai-type-pill .type-syntax {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.ai-prompt-viewer-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.ai-viewer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ai-viewer-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.ai-prompt-textarea {
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 0.75rem !important;
+  font-size: 0.8rem !important;
+  line-height: 1.5 !important;
+  resize: vertical;
+  background: var(--bg-card) !important;
+  color: var(--text-main) !important;
+  box-shadow: none !important;
+}
+
+.ai-template-tips {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+}
+
+.ai-template-tips ul {
+  margin: 0.4rem 0 0 1.1rem;
+  padding: 0;
+}
+
+.ai-template-tips li {
+  margin-bottom: 0.3rem;
+}
+
+@media (max-width: 640px) {
+  .ai-prompt-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ai-template-actions {
+    flex-direction: column;
+  }
+  .ai-template-actions button {
+    width: 100%;
+  }
+  .ai-types-overview {
+    grid-template-columns: 1fr;
+  }
+}

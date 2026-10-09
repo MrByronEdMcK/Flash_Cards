@@ -11,7 +11,7 @@
  * - StudyCards native JSON
  */
 
-import { CARD_TYPES, generateId } from './models.js';
+import { CARD_TYPES, OCCLUSION_MODES, generateId } from './models.js';
 
 /**
  * Service metadata and instructional guides for users
@@ -23,6 +23,14 @@ export const IMPORT_SERVICES = {
     icon: '⚡',
     description: 'Automatically detects the format from file content or extension.',
     acceptedExts: '.txt,.tsv,.csv,.json,.md,.tab'
+  },
+  gizmo: {
+    id: 'gizmo',
+    name: 'Gizmo.ai',
+    icon: '⚡',
+    description: 'Supports Gizmo.ai decks via share link (e.g. app.gizmo.ai/deck/...) or pasted deck source/text.',
+    instructions: 'Paste your Gizmo deck share link (e.g. https://app.gizmo.ai/deck/...) into the Gizmo link box above and click "Fetch Deck", or paste the deck text or HTML source. Flashcards, quiz questions, and cloze items are extracted automatically!',
+    acceptedExts: '.json,.html,.txt'
   },
   quizlet: {
     id: 'quizlet',
@@ -89,6 +97,89 @@ export const IMPORT_SERVICES = {
     acceptedExts: '.json'
   }
 };
+
+/**
+ * AI Prompt Template for generating flashcards compatible with StudyCards.
+ * Can be copied into ChatGPT, Claude, Gemini, DeepSeek, etc.
+ */
+export const AI_PROMPT_TEMPLATE = `You are an expert educator and flashcard creator. Your task is to generate high-yield, comprehensive flashcards from the study material provided below.
+
+Flashcard Syntax Requirements:
+Every card must strictly end with a semicolon (;) on its own line or at the end of the definition. Fields inside each card are separated by a comma (,).
+
+Card Types & Formats:
+1. Basic Flashcards (One-Way Recall):
+Use for standard questions, scenarios, concepts, or causes/effects.
+Syntax: Question or prompt, Answer or explanation;
+Example:
+What is the primary role of mitochondria in eukaryotic cells?,Mitochondria generate cellular energy in the form of ATP through cellular respiration.;
+
+2. Reversible Flashcards (Two-Way Recall):
+Use for terms, definitions, chemical formulas, vocabulary, and concepts where students must be tested in BOTH directions (Term -> Definition AND Definition -> Term).
+Add "[rev]" to the term.
+Syntax: Term [rev], Definition or explanation;
+Example:
+Photosynthesis [rev],The biochemical process by which autotrophic organisms convert light energy into glucose and oxygen.;
+
+3. Cloze Deletion Flashcards (Fill-in-the-Blank):
+Use for statements, definitions, pathways, lists, and context-dependent facts.
+Syntax: Statement containing {{c1::hidden answer}}.; (or with optional extra note: Statement containing {{c1::hidden answer}}, Optional extra note;)
+
+A. Cloze Numbering Rules & Effects:
+- Independent Deletions (Different Numbers: c1, c2, c3...):
+  Generates SEPARATE flashcards in the review queue. Card 1 tests c1 (while other blanks are hidden), Card 2 tests c2.
+  Use when each fact can be recalled separately.
+  Example:
+  In cellular respiration, {{c1::Glycolysis}} occurs in the cytoplasm, while the {{c2::Krebs cycle}} occurs in the mitochondrial matrix.;
+
+- Grouped / Paired Deletions (Same Number: c1 and c1):
+  Using the SAME number for multiple blanks binds them into ONE card. Both blanks are hidden and revealed together.
+  Ideal for paired terms, complementary partners, or items that make sense only together.
+  Example:
+  In DNA complementary base pairing, {{c1::Adenine}} pairs with {{c1::Thymine}}, while {{c2::Cytosine}} pairs with {{c2::Guanine}}.;
+
+- Helpful Hints ({{c1::answer::hint}}):
+  Provide a clue inside the blank that appears during review as [ hint ] instead of [...].
+  Example:
+  The primary organ responsible for filtering blood is the {{c1::kidney::organ}}, which excretes {{c2::urea::waste molecule}}.;
+
+B. Cloze Review Modes (Prefix with a tag to set the study behavior):
+- [cloze] or [cloze-one] — Standard "Hide All, Guess One" (Default):
+  All blanks in the sentence are hidden [...]. The student is tested on one cloze index at a time while the others remain masked.
+  Example:
+  [cloze] In human physiology, {{c1::insulin}} is produced by the {{c2::beta cells::cell type}} of the {{c3::pancreas}}.;
+
+- [cloze-all] — "Hide All, Guess All":
+  All blanks in the sentence are hidden [...], and the student must recall ALL blanks at once on a single card.
+  Ideal for complete chemical equations, full reaction pathways, multi-word phrases, or formulas.
+  Example:
+  [cloze-all] Cellular respiration equation: {{c1::C6H12O6}} + {{c2::6 O2}} -> {{c3::6 CO2}} + {{c4::6 H2O}} + {{c5::ATP}}.;
+
+- [cloze-context] — "Hide One, Guess One" (Context Stepping-Stone):
+  Only the active blank is hidden [...]; all other cloze blanks in the sentence remain visible in plain text to provide context.
+  Ideal for complex, dense sentences where seeing surrounding terms is necessary context to solve the target blank.
+  Example:
+  [cloze-context] The {{c1::hypothalamus}} signals the {{c2::pituitary gland}} to release {{c3::TSH}}, which acts on the {{c4::thyroid}}.;
+
+Flashcard Quality Guidelines:
+- Atomic: Each card should test one focused concept or relation.
+- Clear & Precise: Answers must be self-contained and free of ambiguity.
+- End With Semicolon: Every single card MUST end with a semicolon (;).
+- Output only the cards directly, without introductory chatter, conversational filler, or markdown code fence blocks.
+
+---
+Study Material:
+[PASTE YOUR NOTES, LECTURE TRANSCRIPT, OR TEXTBOOK EXCERPT HERE]`;
+
+/**
+ * Sample working flashcards generated with the AI template
+ */
+export const AI_SAMPLE_CARDS = `What is the primary role of mitochondria in eukaryotic cells?,Mitochondria generate cellular energy in the form of ATP through cellular respiration.;
+Photosynthesis [rev],The biochemical process by which autotrophic organisms convert light energy into glucose and oxygen.;
+In human physiology, {{c1::insulin}} is produced by the {{c2::beta cells::cell type}} of the {{c3::pancreas}} to regulate glucose levels.;
+In DNA complementary base pairing, {{c1::Adenine}} binds with {{c1::Thymine}}, while {{c2::Cytosine}} binds with {{c2::Guanine}}.;
+[cloze-all] Cellular respiration equation: {{c1::C6H12O6}} + {{c2::6 O2}} -> {{c3::6 CO2}} + {{c4::6 H2O}} + {{c5::ATP}}.;
+[cloze-context] The {{c1::hypothalamus}} signals the {{c2::pituitary gland}} to release {{c3::TSH}}, which stimulates the {{c4::thyroid}}.;`;
 
 /**
  * Robust RFC-4180 CSV / TSV Parser
@@ -258,13 +349,122 @@ function detectCloze(text) {
 }
 
 /**
+ * Detect card type and clean content for Basic, Reversible, and Cloze cards.
+ * Recognizes:
+ * - Reversible markers: [rev], [reversible], (rev), (reversible), or ' <-> ' / ' <=> '
+ * - Cloze deletions: {{c1::answer}} or {{answer}}
+ * - Cleans HTML tags and returns normalized card structure.
+ */
+export function analyzeCardTypeAndContent(frontRaw, backRaw = '') {
+  let front = (frontRaw || '').trim();
+  let back = (backRaw || '').trim();
+  let type = CARD_TYPES.BASIC;
+  let clozeText = '';
+  let clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
+
+  // 1. Remove Markdown code block backticks if present
+  front = front.replace(/^`{1,3}|`{1,3}$/g, '').trim();
+  back = back.replace(/^`{1,3}|`{1,3}$/g, '').trim();
+
+  // 2. Check for explicit card type prefixes like [Basic]
+  if (/^\[basic\]\s*/i.test(front)) {
+    front = front.replace(/^\[basic\]\s*/i, '').trim();
+  }
+
+  // 3. Cloze mode markers & tags (e.g. [cloze-all], [guess-all], [cloze-context], [hide-one], [cloze])
+  const clozeAllRegex = /\[(?:cloze[-:]?all|guess[-:]?all|all[-:]?cloze|hide[-_]all[-_]guess[-_]all)\]|\((?:cloze[-:]?all|guess[-:]?all|all[-:]?cloze)\)/gi;
+  const clozeContextRegex = /\[(?:cloze[-:]?(?:context|one[-_]context)|hide[-:]?one(?:[-_]guess[-_]one)?|cloze[-_]one[-_]guess[-_]one)\]|\((?:cloze[-:]?context|hide[-:]?one)\)/gi;
+  const clozeStandardRegex = /\[(?:cloze|cloze[-:]?one|hide[-_]all[-_]guess[-_]one)\]|\((?:cloze|cloze[-:]?one)\)/gi;
+
+  if (clozeAllRegex.test(front) || clozeAllRegex.test(back)) {
+    type = CARD_TYPES.CLOZE;
+    clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ALL;
+    front = front.replace(clozeAllRegex, '').trim();
+    back = back.replace(clozeAllRegex, '').trim();
+  } else if (clozeContextRegex.test(front) || clozeContextRegex.test(back)) {
+    type = CARD_TYPES.CLOZE;
+    clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
+    front = front.replace(clozeContextRegex, '').trim();
+    back = back.replace(clozeContextRegex, '').trim();
+  } else if (clozeStandardRegex.test(front) || clozeStandardRegex.test(back)) {
+    type = CARD_TYPES.CLOZE;
+    clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
+    front = front.replace(clozeStandardRegex, '').trim();
+    back = back.replace(clozeStandardRegex, '').trim();
+  }
+
+  // 4. Check for Reversible markers: [rev], [reversible], (rev), (reversible)
+  const revRegex = /\[(?:rev|reversible)\]|\((?:rev|reversible)\)/i;
+  if (revRegex.test(front) || revRegex.test(back)) {
+    type = CARD_TYPES.REVERSIBLE;
+    front = front.replace(revRegex, '').trim();
+    back = back.replace(revRegex, '').trim();
+  }
+
+  // Check for bidirectional arrow <-> or <=> in front
+  if (front.includes(' <-> ') || front.includes(' <=> ')) {
+    const parts = front.split(/\s+<[=-]>\s+/);
+    front = parts[0].trim();
+    const revBack = parts.slice(1).join(' ').trim();
+    back = back ? `${revBack} - ${back}` : revBack;
+    type = CARD_TYPES.REVERSIBLE;
+  }
+
+  // 5. Check for Cloze deletion in front or back if not already detected as reversible
+  if (type !== CARD_TYPES.REVERSIBLE) {
+    const clozeInFront = detectCloze(front);
+    const clozeInBack = detectCloze(back);
+
+    if (clozeInFront && clozeInBack) {
+      // Both front and back contain cloze deletions: sentence was split by internal punctuation
+      type = CARD_TYPES.CLOZE;
+      const combined = `${front}, ${back}`;
+      clozeText = detectCloze(combined) || combined;
+      front = clozeText;
+      back = '';
+    } else if (clozeInBack && !clozeInFront && !front.endsWith('?')) {
+      // Back contains cloze but front was an introductory clause split by comma (e.g. "In human physiology, ...")
+      type = CARD_TYPES.CLOZE;
+      const combined = `${front}, ${back}`;
+      clozeText = detectCloze(combined) || combined;
+      front = clozeText;
+      back = '';
+    } else if (clozeInFront) {
+      type = CARD_TYPES.CLOZE;
+      clozeText = clozeInFront;
+    } else if (clozeInBack) {
+      type = CARD_TYPES.CLOZE;
+      clozeText = clozeInBack;
+    } else if (type === CARD_TYPES.CLOZE) {
+      clozeText = front;
+    }
+  }
+
+  return {
+    front: cleanHtml(front),
+    back: cleanHtml(back),
+    type,
+    clozeText: cleanHtml(clozeText),
+    clozeMode
+  };
+}
+
+/**
  * Auto-detect the likely service based on filename and text content
  */
 export function autoDetectService(text, filename = '') {
   const ext = filename ? filename.toLowerCase().split('.').pop() : '';
   const trimmed = text.trim();
 
-  // 1. JSON
+  // 1. Gizmo.ai (Share URL or Gizmo HTML/JSON signature)
+  if (
+    trimmed.includes('gizmo.ai') ||
+    (trimmed.includes('__NEXT_DATA__') && (trimmed.includes('gizmo') || trimmed.includes('"deck"')))
+  ) {
+    return 'gizmo';
+  }
+
+  // 2. JSON
   if (ext === 'json' || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -275,22 +475,30 @@ export function autoDetectService(text, filename = '') {
     }
   }
 
-  // 2. Anki Comments
+  // 3. Anki Comments
   if (trimmed.startsWith('#separator:') || trimmed.startsWith('#html:') || trimmed.startsWith('#tags column:')) {
     return 'anki';
   }
 
-  // 3. RemNote (Markdown with :: or ::: or ;;)
-  if (ext === 'md' || /(?:^|\n).+?\s*:::\s*.+/m.test(trimmed) || /(?:^|\n).+?\s*::\s*.+/m.test(trimmed) || /(?:^|\n).+?\s*;;/m.test(trimmed)) {
+  // Check if semicolon-separated cards (Quizlet export or AI template)
+  const semiCount = (trimmed.match(/;/g) || []).length;
+  if (semiCount >= 2 || (semiCount >= 1 && trimmed.endsWith(';'))) {
+    return 'quizlet';
+  }
+
+  // 4. RemNote (Markdown with :: or ::: or ;;)
+  // Strip cloze syntax like {{c1::answer}} so it does not falsely trigger RemNote ::
+  const withoutCloze = trimmed.replace(/\{\{[^{}]+?\}\}/g, '');
+  if (ext === 'md' || /(?:^|\n).+?\s*:::\s*.+/m.test(withoutCloze) || /(?:^|\n).+?\s*::\s*.+/m.test(withoutCloze) || /(?:^|\n).+?\s*;;/m.test(withoutCloze)) {
     return 'remnote';
   }
 
-  // 4. Brainscape CSV header
+  // 5. Brainscape CSV header
   if (ext === 'csv' || /^["']?Question["']?\s*,\s*["']?Answer["']?/i.test(trimmed)) {
     return 'brainscape';
   }
 
-  // 5. Quizlet or Universal TSV
+  // 6. Quizlet or Universal TSV
   if (ext === 'tsv' || (trimmed.split('\n').length > 1 && trimmed.includes('\t'))) {
     return 'quizlet';
   }
@@ -315,6 +523,9 @@ export function parseImport(rawText, serviceId = 'auto', options = {}) {
   let result = null;
 
   switch (activeService) {
+    case 'gizmo':
+      result = parseGizmoDeck(rawText);
+      break;
     case 'studycards':
       result = parseStudyCardsJson(rawText);
       break;
@@ -452,14 +663,48 @@ export function parseQuizlet(text, options = {}) {
       if (chunk.includes(fieldSeparator)) {
         let sepIdx = -1;
 
-        // Smart delimiter boundary: if question ends with ? followed by fieldSeparator
-        // e.g. "What are humans: class, order, superfamily and tribe?,class-mammalia..."
-        if (chunk.includes('?' + fieldSeparator)) {
+        // Smart delimiter boundary:
+        // If chunk contains cloze deletions and field separator is comma, any true field separator
+        // must come AFTER the last cloze bracket '}}', or after '?'
+        const hasCloze = /\{\{(?:c\d+::|[^{}]+?\}\})/i.test(chunk);
+        if (hasCloze && fieldSeparator === ',') {
+          if (chunk.includes('?' + fieldSeparator)) {
+            sepIdx = chunk.indexOf('?' + fieldSeparator) + 1;
+          } else {
+            const lastClozeIdx = chunk.lastIndexOf('}}');
+            if (lastClozeIdx !== -1) {
+              const commaAfterLastCloze = chunk.indexOf(',', lastClozeIdx + 2);
+              if (commaAfterLastCloze !== -1) {
+                sepIdx = commaAfterLastCloze;
+              } else {
+                sepIdx = -1;
+              }
+            }
+          }
+        } else if (chunk.includes('?' + fieldSeparator)) {
           sepIdx = chunk.indexOf('?' + fieldSeparator) + 1;
         } else if (chunk.includes('?\n' + fieldSeparator)) {
           sepIdx = chunk.indexOf('?\n' + fieldSeparator) + 2;
         } else {
           sepIdx = chunk.indexOf(fieldSeparator);
+        }
+
+        if (sepIdx === -1) {
+          // No field separator dividing Q and A (e.g. whole chunk is a cloze statement with internal commas)
+          const analyzed = analyzeCardTypeAndContent(chunk, '');
+          if (analyzed.type === CARD_TYPES.CLOZE) {
+            cards.push({
+              front: analyzed.front,
+              back: analyzed.back || '',
+              hint: '',
+              tags: ['quizlet'],
+              type: CARD_TYPES.CLOZE,
+              clozeText: analyzed.clozeText,
+              clozeMode: analyzed.clozeMode,
+              sourceLine: lineNum
+            });
+            continue;
+          }
         }
 
         const front = chunk.substring(0, sepIdx).trim();
@@ -476,6 +721,20 @@ export function parseQuizlet(text, options = {}) {
           continue;
         }
         if (!back) {
+          const analyzed = analyzeCardTypeAndContent(front, '');
+          if (analyzed.type === CARD_TYPES.CLOZE) {
+            cards.push({
+              front: analyzed.front,
+              back: analyzed.back || '',
+              hint: '',
+              tags: ['quizlet'],
+              type: CARD_TYPES.CLOZE,
+              clozeText: analyzed.clozeText,
+              clozeMode: analyzed.clozeMode,
+              sourceLine: lineNum
+            });
+            continue;
+          }
           warnings.push({
             line: lineNum,
             reason: 'Missing definition/answer (back is empty)',
@@ -484,21 +743,39 @@ export function parseQuizlet(text, options = {}) {
           continue;
         }
 
+        const analyzed = analyzeCardTypeAndContent(front, back);
         cards.push({
-          front: cleanHtml(front),
-          back: cleanHtml(back),
+          front: analyzed.front,
+          back: analyzed.back,
           hint: '',
           tags: ['quizlet'],
-          type: CARD_TYPES.BASIC,
-          clozeText: '',
+          type: analyzed.type,
+          clozeText: analyzed.clozeText,
+          clozeMode: analyzed.clozeMode,
           sourceLine: lineNum
         });
       } else {
         // Chunk does not contain fieldSeparator:
-        // Occurs when an unescaped semicolon was inside a card's definition text
-        if (cards.length > 0) {
+        // Check if it's a standalone cloze deletion card!
+        const analyzed = analyzeCardTypeAndContent(chunk, '');
+        if (analyzed.type === CARD_TYPES.CLOZE) {
+          cards.push({
+            front: analyzed.front,
+            back: analyzed.back || '',
+            hint: '',
+            tags: ['quizlet'],
+            type: CARD_TYPES.CLOZE,
+            clozeText: analyzed.clozeText,
+            clozeMode: analyzed.clozeMode,
+            sourceLine: lineNum
+          });
+        } else if (cards.length > 0) {
           cards[cards.length - 1].back += '; ' + cleanHtml(chunk);
         } else {
+          // If it looks like a conversational header/commentary from AI (e.g. "Here are your cards:"), skip without error
+          if (/^(?:here are|flashcards|certainly|study cards|notes)/i.test(chunk)) {
+            continue;
+          }
           warnings.push({
             line: lineNum,
             reason: 'Orphaned text fragment without term separator',
@@ -536,17 +813,33 @@ export function parseQuizlet(text, options = {}) {
       continue;
     }
     if (!back) {
+      const analyzed = analyzeCardTypeAndContent(front, '');
+      if (analyzed.type === CARD_TYPES.CLOZE) {
+        cards.push({
+          front: analyzed.front,
+          back: analyzed.back || '',
+          hint: '',
+          tags: ['quizlet'],
+          type: CARD_TYPES.CLOZE,
+          clozeText: analyzed.clozeText,
+          clozeMode: analyzed.clozeMode,
+          sourceLine: lineNum
+        });
+        continue;
+      }
       warnings.push({ line: lineNum, reason: 'Missing definition/answer (back is empty)', rawSnippet: front.substring(0, 40) });
       continue;
     }
 
+    const analyzed = analyzeCardTypeAndContent(front, back);
     cards.push({
-      front: cleanHtml(front),
-      back: cleanHtml(back),
+      front: analyzed.front,
+      back: analyzed.back,
       hint: '',
       tags: ['quizlet'],
-      type: CARD_TYPES.BASIC,
-      clozeText: '',
+      type: analyzed.type,
+      clozeText: analyzed.clozeText,
+      clozeMode: analyzed.clozeMode,
       sourceLine: lineNum
     });
   }
@@ -580,13 +873,15 @@ export function parseAnki(text) {
     // Check for Anki Cloze in field 1
     const clozeField1 = detectCloze(field1);
     if (clozeField1) {
+      const analyzed = analyzeCardTypeAndContent(field1, field2);
       cards.push({
-        front: cleanHtml(field1.replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/gi, '[...]')),
-        back: cleanHtml(field2 || field1),
+        front: cleanHtml(analyzed.front || field1),
+        back: cleanHtml(analyzed.back || field2 || ''),
         hint: '',
         tags: field3 ? field3.split(/\s+/).filter(Boolean) : ['anki'],
         type: CARD_TYPES.CLOZE,
-        clozeText: clozeField1,
+        clozeText: analyzed.clozeText || clozeField1,
+        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
         sourceLine: lineNum
       });
       continue;
@@ -712,13 +1007,15 @@ export function parseRemNote(text) {
     // RemNote Cloze: text with {{concept}}
     const cloze = detectCloze(line);
     if (cloze) {
+      const analyzed = analyzeCardTypeAndContent(line, '');
       cards.push({
-        front: cleanHtml(line.replace(/\{\{([^{}]+?)\}\}/g, '[...]').replace(/^[-*•]\s*/, '')),
-        back: cleanHtml(line.replace(/^[-*•]\s*/, '')),
+        front: cleanHtml(analyzed.front || line.replace(/\{\{([^{}]+?)\}\}/g, '[...]').replace(/^[-*•]\s*/, '')),
+        back: cleanHtml(analyzed.back || line.replace(/^[-*•]\s*/, '')),
         hint: '',
         tags: ['remnote'],
         type: CARD_TYPES.CLOZE,
-        clozeText: cloze.replace(/^[-*•]\s*/, ''),
+        clozeText: analyzed.clozeText || cloze.replace(/^[-*•]\s*/, ''),
+        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
         sourceLine: lineNum
       });
       continue;
@@ -861,17 +1158,33 @@ export function parseKnowt(text) {
           continue;
         }
         if (!back) {
+          const analyzed = analyzeCardTypeAndContent(front, '');
+          if (analyzed.type === CARD_TYPES.CLOZE) {
+            cards.push({
+              front: analyzed.front,
+              back: analyzed.back || '',
+              hint: (item.hint || '').trim(),
+              tags: ['knowt'],
+              type: CARD_TYPES.CLOZE,
+              clozeText: analyzed.clozeText,
+              clozeMode: analyzed.clozeMode,
+              sourceLine: idx
+            });
+            continue;
+          }
           warnings.push({ line: idx, reason: 'Missing definition/back', rawSnippet: front.substring(0, 40) });
           continue;
         }
 
+        const analyzed = analyzeCardTypeAndContent(front, back);
         cards.push({
-          front: cleanHtml(front),
-          back: cleanHtml(back),
+          front: analyzed.front,
+          back: analyzed.back,
           hint: (item.hint || '').trim(),
           tags: ['knowt'],
-          type: CARD_TYPES.BASIC,
-          clozeText: '',
+          type: analyzed.type,
+          clozeText: analyzed.clozeText,
+          clozeMode: analyzed.clozeMode,
           sourceLine: idx
         });
       }
@@ -886,7 +1199,354 @@ export function parseKnowt(text) {
 }
 
 /**
- * 7. Universal Delimited Parser (CSV, TSV, Semicolon, Custom)
+ * 7. Gizmo.ai Share Link & Deck Importer
+ * Supports:
+ * - Public Gizmo share URLs (e.g. https://app.gizmo.ai/deck/[id] or https://gizmo.ai/deck/[id])
+ * - Gizmo HTML pages containing Next.js __NEXT_DATA__
+ * - Raw JSON exported or copied from Gizmo
+ * - Multiple choice / quiz questions (converts to Q&A)
+ * - Fill in the blank / cloze questions
+ * - Reversible cards
+ */
+export async function fetchGizmoShareLink(url) {
+  const cleanUrl = (url || '').trim();
+  if (!cleanUrl) {
+    throw new Error('Please enter a valid Gizmo share URL.');
+  }
+
+  if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+    throw new Error('Please enter a full URL starting with https://');
+  }
+
+  if (!cleanUrl.includes('gizmo.ai')) {
+    throw new Error('The URL does not appear to be a gizmo.ai link. Please check the URL.');
+  }
+
+  let htmlOrJson = null;
+  let fetchError = null;
+
+  // Attempt direct fetch
+  try {
+    const res = await fetch(cleanUrl, {
+      headers: { 'Accept': 'text/html,application/json' }
+    });
+    if (res.ok) {
+      htmlOrJson = await res.text();
+    }
+  } catch (err) {
+    fetchError = err;
+  }
+
+  // Fallback to CORS proxies if direct fetch was blocked by browser CORS
+  if (!htmlOrJson) {
+    const proxies = [
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(cleanUrl)}`,
+      `https://corsproxy.io/?url=${encodeURIComponent(cleanUrl)}`
+    ];
+
+    for (const pUrl of proxies) {
+      try {
+        const res = await fetch(pUrl);
+        if (res.ok) {
+          const body = await res.text();
+          if (body && body.length > 50) {
+            htmlOrJson = body;
+            break;
+          }
+        }
+      } catch (e) {
+        // try next proxy
+      }
+    }
+  }
+
+  if (!htmlOrJson) {
+    throw new Error(
+      `Could not automatically load the deck from Gizmo.ai (${fetchError?.message || 'CORS/Network restriction'}). ` +
+      `You can still import it: Open the Gizmo deck in your browser, press Ctrl+U (View Page Source) or copy the cards, and paste them into the "Paste Text" tab!`
+    );
+  }
+
+  const result = parseGizmoDeck(htmlOrJson);
+  if (!result.success || result.cards.length === 0) {
+    throw new Error('Fetched the page from Gizmo, but could not find any cards in the data. Please ensure the deck is public.');
+  }
+
+  return result;
+}
+
+/**
+ * Parse Gizmo deck from HTML, JSON, or text
+ */
+export function parseGizmoDeck(textOrObj) {
+  let data = textOrObj;
+
+  if (typeof data === 'string') {
+    const trimmed = data.trim();
+
+    // If string is just a Gizmo URL
+    if ((trimmed.startsWith('http://') || trimmed.startsWith('https://')) && trimmed.includes('gizmo.ai')) {
+      return {
+        success: false,
+        isGizmoUrlOnly: true,
+        gizmoUrl: trimmed,
+        serviceName: 'Gizmo.ai',
+        deckName: 'Gizmo Deck',
+        cards: [],
+        warnings: [{ line: 1, reason: 'URL detected. Please click Fetch Deck to retrieve cards.', rawSnippet: trimmed.substring(0, 50) }],
+        stats: { totalRows: 1, validCards: 0, skippedRows: 1, cardTypes: {} }
+      };
+    }
+
+    // Check for Next.js __NEXT_DATA__
+    const nextDataMatch = trimmed.match(/<script\s+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (nextDataMatch) {
+      try {
+        data = JSON.parse(nextDataMatch[1]);
+      } catch (e) {}
+    } else if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        data = JSON.parse(trimmed);
+      } catch (e) {}
+    } else {
+      // Check for other script tags with JSON
+      const scriptMatches = [...trimmed.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const m of scriptMatches) {
+        const body = m[1].trim();
+        if ((body.includes('"cards"') || body.includes('"deck"')) && (body.startsWith('{') || body.startsWith('window.'))) {
+          const jsonSub = body.replace(/^[^{]*/, '').replace(/[^}]*$/, '');
+          try {
+            data = JSON.parse(jsonSub);
+            break;
+          } catch (e) {}
+        }
+      }
+    }
+  }
+
+  // If data is now an object / parsed JSON
+  if (data && typeof data === 'object') {
+    const extracted = extractGizmoDeckFromObject(data);
+    if (extracted && extracted.cards.length > 0) {
+      const res = buildResult('Gizmo.ai', extracted.cards, extracted.warnings, extracted.totalRows);
+      if (extracted.deckTitle) res.deckName = extracted.deckTitle;
+      return res;
+    }
+  }
+
+  // Fallback: If data is HTML text, attempt DOM scraping
+  if (typeof textOrObj === 'string' && (textOrObj.includes('<div') || textOrObj.includes('<body') || textOrObj.includes('<!DOCTYPE'))) {
+    const domExtracted = extractGizmoFromHtmlString(textOrObj);
+    if (domExtracted && domExtracted.cards.length > 0) {
+      const res = buildResult('Gizmo.ai', domExtracted.cards, domExtracted.warnings, domExtracted.totalRows);
+      if (domExtracted.deckTitle) res.deckName = domExtracted.deckTitle;
+      return res;
+    }
+  }
+
+  // Final fallback: Delimited or Quizlet parser
+  if (typeof textOrObj === 'string') {
+    const fallback = parseDelimited(textOrObj);
+    if (fallback.cards.length > 0) {
+      fallback.serviceName = 'Gizmo.ai';
+      return fallback;
+    }
+  }
+
+  return {
+    success: false,
+    serviceName: 'Gizmo.ai',
+    deckName: 'Gizmo Deck',
+    cards: [],
+    warnings: [{ line: 1, reason: 'No cards could be found in the Gizmo data', rawSnippet: '' }],
+    stats: { totalRows: 0, validCards: 0, skippedRows: 1, cardTypes: {} }
+  };
+}
+
+/**
+ * Deep search object to find array of flashcard-like objects
+ */
+function findCardLikeArrayInObject(obj, depth = 0) {
+  if (!obj || typeof obj !== 'object' || depth > 8) return null;
+
+  if (Array.isArray(obj)) {
+    if (obj.length > 0 && typeof obj[0] === 'object') {
+      const hits = obj.filter(item => {
+        if (!item || typeof item !== 'object') return false;
+        return Boolean(
+          item.front || item.term || item.question || item.prompt || item.text || item.title ||
+          item.back || item.definition || item.answer || item.response || item.options
+        );
+      }).length;
+      if (hits >= Math.min(obj.length * 0.4, 1)) {
+        return obj;
+      }
+    }
+  }
+
+  for (const key of Object.keys(obj)) {
+    if (key === '__router' || (key === 'pageProps' && depth > 2)) continue;
+    const found = findCardLikeArrayInObject(obj[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Extract cards and title from Gizmo JSON object
+ */
+function extractGizmoDeckFromObject(rootObj) {
+  if (!rootObj || typeof rootObj !== 'object') return null;
+
+  // 1. Deck Title
+  let deckTitle = 'Gizmo Deck';
+  if (rootObj.deck?.title) deckTitle = rootObj.deck.title;
+  else if (rootObj.deck?.name) deckTitle = rootObj.deck.name;
+  else if (rootObj.props?.pageProps?.deck?.title) deckTitle = rootObj.props.pageProps.deck.title;
+  else if (rootObj.props?.pageProps?.deck?.name) deckTitle = rootObj.props.pageProps.deck.name;
+  else if (rootObj.props?.pageProps?.deckData?.title) deckTitle = rootObj.props.pageProps.deckData.title;
+  else if (rootObj.props?.pageProps?.initialData?.deck?.title) deckTitle = rootObj.props.pageProps.initialData.deck.title;
+  else if (rootObj.title) deckTitle = rootObj.title;
+  else if (rootObj.name) deckTitle = rootObj.name;
+
+  // 2. Cards array
+  let rawCards = null;
+  if (Array.isArray(rootObj.props?.pageProps?.deck?.cards)) rawCards = rootObj.props.pageProps.deck.cards;
+  else if (Array.isArray(rootObj.props?.pageProps?.deckData?.cards)) rawCards = rootObj.props.pageProps.deckData.cards;
+  else if (Array.isArray(rootObj.props?.pageProps?.initialData?.deck?.cards)) rawCards = rootObj.props.pageProps.initialData.deck.cards;
+  else if (Array.isArray(rootObj.props?.pageProps?.initialData?.cards)) rawCards = rootObj.props.pageProps.initialData.cards;
+  else if (Array.isArray(rootObj.props?.pageProps?.cards)) rawCards = rootObj.props.pageProps.cards;
+  else if (Array.isArray(rootObj.deck?.cards)) rawCards = rootObj.deck.cards;
+  else if (Array.isArray(rootObj.cards)) rawCards = rootObj.cards;
+  else if (Array.isArray(rootObj.items)) rawCards = rootObj.items;
+  else if (Array.isArray(rootObj.flashcards)) rawCards = rootObj.flashcards;
+  else if (Array.isArray(rootObj)) rawCards = rootObj;
+  else {
+    rawCards = findCardLikeArrayInObject(rootObj);
+  }
+
+  if (!rawCards || !Array.isArray(rawCards) || rawCards.length === 0) {
+    return null;
+  }
+
+  const cards = [];
+  const warnings = [];
+
+  for (let i = 0; i < rawCards.length; i++) {
+    const item = rawCards[i];
+    if (!item || typeof item !== 'object') continue;
+
+    let front = (item.front || item.term || item.question || item.prompt || item.text || item.title || item.cue || '').trim();
+    let back = (item.back || item.definition || item.answer || item.response || item.completion || '').trim();
+
+    // Multiple-choice questions in Gizmo
+    if (!back && Array.isArray(item.options)) {
+      const correctOpt = item.options.find(o => o && (o.isCorrect || o.correct || o.is_correct));
+      if (correctOpt) {
+        back = (typeof correctOpt === 'string' ? correctOpt : (correctOpt.text || correctOpt.answer || correctOpt.label || '')).trim();
+      } else if (typeof item.correctAnswer === 'string') {
+        back = item.correctAnswer.trim();
+      } else if (typeof item.correctIndex === 'number' && item.options[item.correctIndex]) {
+        const opt = item.options[item.correctIndex];
+        back = (typeof opt === 'string' ? opt : (opt.text || opt.answer || '')).trim();
+      }
+    }
+
+    if (item.explanation && typeof item.explanation === 'string' && item.explanation.trim()) {
+      back = back ? `${back}\n\nExplanation: ${item.explanation.trim()}` : item.explanation.trim();
+    }
+
+    if (!front && !back) continue;
+
+    if (!front) {
+      warnings.push({ line: i + 1, reason: 'Card front is empty', rawSnippet: back.substring(0, 40) });
+      continue;
+    }
+    if (!back) {
+      const analyzed = analyzeCardTypeAndContent(front, '');
+      if (analyzed.type === CARD_TYPES.CLOZE) {
+        cards.push({
+          front: analyzed.front,
+          back: analyzed.back || '',
+          hint: '',
+          tags: ['gizmo'],
+          type: CARD_TYPES.CLOZE,
+          clozeText: analyzed.clozeText,
+          clozeMode: analyzed.clozeMode,
+          sourceLine: i + 1
+        });
+        continue;
+      }
+      warnings.push({ line: i + 1, reason: 'Card answer is empty', rawSnippet: front.substring(0, 40) });
+      continue;
+    }
+
+    const isReversible = item.reversible === true || item.bothWays === true || item.type === 'reversible' || item.mode === 'reversible';
+    const analyzed = analyzeCardTypeAndContent(front, back);
+
+    cards.push({
+      front: analyzed.front,
+      back: analyzed.back,
+      hint: (item.hint || '').trim(),
+      tags: Array.isArray(item.tags) ? item.tags : ['gizmo'],
+      type: isReversible ? CARD_TYPES.REVERSIBLE : analyzed.type,
+      clozeText: analyzed.clozeText,
+      clozeMode: analyzed.clozeMode,
+      sourceLine: i + 1
+    });
+  }
+
+  return { cards, warnings, deckTitle, totalRows: rawCards.length };
+}
+
+/**
+ * Fallback DOM scraper for Gizmo HTML
+ */
+function extractGizmoFromHtmlString(html) {
+  try {
+    if (typeof DOMParser === 'undefined') return null;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    let deckTitle = doc.querySelector('title')?.textContent?.replace(/\s*\|\s*Gizmo.*$/i, '').trim() || 'Gizmo Deck';
+    const cards = [];
+    const warnings = [];
+
+    const cardNodes = doc.querySelectorAll('[data-testid*="card"], .card, .flashcard, [class*="CardContainer"], [class*="Flashcard"]');
+    if (cardNodes.length > 0) {
+      let idx = 0;
+      for (const node of cardNodes) {
+        idx++;
+        const frontEl = node.querySelector('[class*="front"], [class*="term"], [class*="question"], h3, h4, p');
+        const backEl = node.querySelector('[class*="back"], [class*="definition"], [class*="answer"], div:last-child');
+        const frontText = frontEl ? frontEl.textContent.trim() : '';
+        const backText = backEl && backEl !== frontEl ? backEl.textContent.trim() : '';
+
+        if (frontText && backText) {
+          const analyzed = analyzeCardTypeAndContent(frontText, backText);
+          cards.push({
+            front: analyzed.front,
+            back: analyzed.back,
+            hint: '',
+            tags: ['gizmo'],
+            type: analyzed.type,
+            clozeText: analyzed.clozeText,
+            clozeMode: analyzed.clozeMode,
+            sourceLine: idx
+          });
+        }
+      }
+    }
+
+    if (cards.length > 0) {
+      return { cards, warnings, deckTitle, totalRows: cards.length };
+    }
+  } catch (err) {}
+  return null;
+}
+
+/**
+ * 8. Universal Delimited Parser (CSV, TSV, Semicolon, Custom)
  */
 export function parseDelimited(text, options = null) {
   const customFieldSep = typeof options === 'string' ? options : (options?.fieldSeparator && options.fieldSeparator !== 'auto' ? options.fieldSeparator : null);
@@ -929,20 +1589,34 @@ export function parseDelimited(text, options = null) {
       continue;
     }
     if (!back) {
+      const analyzed = analyzeCardTypeAndContent(front, '');
+      if (analyzed.type === CARD_TYPES.CLOZE) {
+        cards.push({
+          front: analyzed.front,
+          back: analyzed.back || '',
+          hint: '',
+          tags: ['imported'],
+          type: CARD_TYPES.CLOZE,
+          clozeText: analyzed.clozeText,
+          clozeMode: analyzed.clozeMode,
+          sourceLine: lineNum
+        });
+        continue;
+      }
       warnings.push({ line: lineNum, reason: 'Column 2 (Answer) is empty', rawSnippet: front.substring(0, 40) });
       continue;
     }
 
-    // Check for cloze in front
-    const cloze = detectCloze(front);
+    const analyzed = analyzeCardTypeAndContent(front, back);
 
     cards.push({
-      front: cleanHtml(front),
-      back: cleanHtml(back),
+      front: analyzed.front,
+      back: analyzed.back,
       hint: '',
       tags: ['imported'],
-      type: cloze ? CARD_TYPES.CLOZE : CARD_TYPES.BASIC,
-      clozeText: cloze || '',
+      type: analyzed.type,
+      clozeText: analyzed.clozeText,
+      clozeMode: analyzed.clozeMode,
       sourceLine: lineNum
     });
   }
@@ -1012,11 +1686,29 @@ export function parseStudyCardsJson(jsonString) {
  * Construct standardized parse result object
  */
 function buildResult(serviceName, cards, warnings, totalRows) {
-  const typeCounts = { basic: 0, cloze: 0, reversible: 0 };
+  const typeCounts = {
+    basic: 0,
+    cloze: 0,
+    reversible: 0,
+    clozeGuessOne: 0,
+    clozeGuessAll: 0,
+    clozeContext: 0
+  };
   for (const c of cards) {
-    if (c.type === CARD_TYPES.CLOZE) typeCounts.cloze++;
-    else if (c.type === CARD_TYPES.REVERSIBLE) typeCounts.reversible++;
-    else typeCounts.basic++;
+    if (c.type === CARD_TYPES.CLOZE) {
+      typeCounts.cloze++;
+      if (c.clozeMode === OCCLUSION_MODES.HIDE_ALL_GUESS_ALL) {
+        typeCounts.clozeGuessAll++;
+      } else if (c.clozeMode === OCCLUSION_MODES.HIDE_ONE_GUESS_ONE) {
+        typeCounts.clozeContext++;
+      } else {
+        typeCounts.clozeGuessOne++;
+      }
+    } else if (c.type === CARD_TYPES.REVERSIBLE) {
+      typeCounts.reversible++;
+    } else {
+      typeCounts.basic++;
+    }
   }
 
   return {

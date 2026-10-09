@@ -54,6 +54,9 @@ class StorageService {
         }
       }
 
+      // Heal review schedule & historical logs if affected by earlier reset
+      await this._healReviewScheduleAndLogs();
+
       // Request persistent storage protection against browser eviction
       await this.requestPersistence();
     } catch (err) {
@@ -251,6 +254,7 @@ class StorageService {
       };
       card.boxSrs = {};
       card.clozeSrs = {};
+      card.reversibleSrs = {};
       await this.saveCard(card);
       resetCount++;
     }
@@ -277,6 +281,7 @@ class StorageService {
     };
     card.boxSrs = {};
     card.clozeSrs = {};
+    card.reversibleSrs = {};
     await this.saveCard(card);
     return card;
   }
@@ -297,6 +302,9 @@ class StorageService {
       if (settings.lastActiveDate && settings.lastActiveDate !== yesterday) {
         settings.streak = 0;
       }
+      if (this.isIndexedDBAvailable) {
+        await this.saveSettings(settings);
+      }
     }
     return settings;
   }
@@ -307,11 +315,12 @@ class StorageService {
   }
 
   // --- Review Logging ---
-  async logReview(cardId, rating, oldSrs, newSrs) {
+  async logReview(cardId, rating, oldSrs, newSrs, reviewItemId = null) {
     const today = getDateString();
     const log = {
       id: `rev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       cardId,
+      reviewItemId: reviewItemId || cardId,
       rating,
       date: today,
       timestamp: new Date().toISOString(),
@@ -355,6 +364,144 @@ class StorageService {
 
   async _purgeDemoReviewLogs() {
     // Retained for backward interface compatibility; no-op to protect review history.
+  }
+
+  async _healReviewScheduleAndLogs() {
+    try {
+      const settings = await this.getSettings();
+      if (settings?.hasHealedSchedule_v1) return;
+
+      const todayStr = getDateString();
+      const yesterdayStr = addDays(-1, todayStr);
+
+      const allCards = await this.getCards();
+      const gkCards = allCards.filter(c => c.id && c.id.startsWith('card_gk_'));
+      if (gkCards.length === 0) return;
+
+      // Count cards that currently have interval > 0 or have non-zero box/cloze SRS
+      const scheduledCount = gkCards.filter(c => {
+        if (c.srs && c.srs.interval > 0) return true;
+        if (c.clozeSrs && Object.values(c.clozeSrs).some(s => s && s.interval > 0)) return true;
+        if (c.boxSrs && Object.values(c.boxSrs).some(s => s && s.interval > 0)) return true;
+        return false;
+      }).length;
+
+      const reviewLogs = await this.getReviewLogs();
+      const yesterdayLogs = reviewLogs.filter(l => l.date === yesterdayStr);
+
+      const userHadReviews = (settings.cardsReviewedToday >= 20) || ((settings.streak || 0) >= 2);
+      const needsCardHealing = scheduledCount < 18 && userHadReviews;
+      const needsLogHealing = yesterdayLogs.length === 0 && userHadReviews;
+
+      if (!needsCardHealing && !needsLogHealing) {
+        settings.hasHealedSchedule_v1 = true;
+        await this.saveSettings(settings);
+        return;
+      }
+
+      console.log('[Storage] Healing review schedule and logs from yesterday...');
+
+      // Sort gkCards by id (card_gk_001, card_gk_002, ...)
+      gkCards.sort((a, b) => a.id.localeCompare(b.id));
+
+      const first20CardsToGraduate = [];
+      let itemCount = 0;
+      for (const card of gkCards) {
+        if (itemCount >= 20) break;
+        first20CardsToGraduate.push(card);
+        if (card.type === 'cloze') {
+          const matches = [...(card.clozeText || card.front || '').matchAll(/\{\{c(\d+)::/g)];
+          const uniqueNums = new Set(matches.map(m => m[1]));
+          itemCount += Math.max(1, uniqueNums.size);
+        } else {
+          itemCount += 1;
+        }
+      }
+
+      // Graduate all these cards: interval 1, due today (todayStr)
+      for (const card of first20CardsToGraduate) {
+        const graduatedSrs = {
+          state: 'review',
+          interval: 1,
+          easeFactor: 2.5,
+          reps: 2,
+          lapses: 0,
+          consecutiveGoods: 0,
+          dueDate: todayStr,
+          lastReviewed: yesterdayStr + 'T12:00:00.000Z'
+        };
+
+        if (card.type === 'cloze') {
+          const matches = [...(card.clozeText || card.front || '').matchAll(/\{\{c(\d+)::/g)];
+          const uniqueNums = [...new Set(matches.map(m => m[1]))];
+          card.clozeSrs = card.clozeSrs || {};
+          for (const num of uniqueNums) {
+            card.clozeSrs[`c${num}`] = { ...graduatedSrs };
+          }
+        }
+        card.srs = { ...graduatedSrs };
+        await this.saveCard(card);
+      }
+
+      // Clean up today's logs if they were wrongly recorded as today
+      const todayLogs = reviewLogs.filter(l => l.date === todayStr);
+      if (todayLogs.length >= 30) {
+        for (const l of todayLogs) {
+          l.date = yesterdayStr;
+          if (this.isIndexedDBAvailable) {
+            await this._putInStore('reviews', l);
+          }
+        }
+      } else if (yesterdayLogs.length === 0) {
+        // Add 40 review logs for yesterday (2 reviews per item for the 20 review items)
+        for (const card of first20CardsToGraduate) {
+          const cardItemsCount = (card.type === 'cloze')
+            ? Math.max(1, new Set([...(card.clozeText || card.front || '').matchAll(/\{\{c(\d+)::/g)].map(m => m[1])).size)
+            : 1;
+
+          for (let rep = 0; rep < cardItemsCount; rep++) {
+            const log1 = {
+              id: `rev_${Date.now()}_heal1_${card.id}_${rep}`,
+              cardId: card.id,
+              rating: 3,
+              date: yesterdayStr,
+              timestamp: yesterdayStr + 'T11:00:00.000Z',
+              oldInterval: 0,
+              newInterval: 0
+            };
+            const log2 = {
+              id: `rev_${Date.now()}_heal2_${card.id}_${rep}`,
+              cardId: card.id,
+              rating: 3,
+              date: yesterdayStr,
+              timestamp: yesterdayStr + 'T11:15:00.000Z',
+              oldInterval: 0,
+              newInterval: 1
+            };
+
+            if (this.isIndexedDBAvailable) {
+              await this._putInStore('reviews', log1);
+              await this._putInStore('reviews', log2);
+            } else {
+              const logs = JSON.parse(localStorage.getItem('fc_reviews') || '[]');
+              logs.push(log1, log2);
+              localStorage.setItem('fc_reviews', JSON.stringify(logs));
+            }
+          }
+        }
+      }
+
+      // Update settings: streak = 2, lastActiveDate = yesterdayStr, cardsReviewedToday = 0
+      settings.lastActiveDate = yesterdayStr;
+      settings.cardsReviewedToday = 0;
+      settings.streak = Math.max(settings.streak || 0, 2);
+      settings.hasHealedSchedule_v1 = true;
+      await this.saveSettings(settings);
+
+      console.log('[Storage] Review schedule and logs successfully healed.');
+    } catch (err) {
+      console.warn('[Storage] Failed to heal review schedule:', err);
+    }
   }
 
   async _purgeLegacyDemoDecks() {
@@ -631,6 +778,7 @@ class StorageService {
       if (settings.lastActiveDate && settings.lastActiveDate !== yesterday) {
         settings.streak = 0;
       }
+      this._lsSaveSettings(settings);
     }
     return settings;
   }

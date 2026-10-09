@@ -4,7 +4,7 @@
  */
 
 import { storage } from '../storage.js';
-import { CARD_TYPES, OCCLUSION_MODES, createCard, getClozeNumbers } from '../models.js';
+import { CARD_TYPES, OCCLUSION_MODES, GROUP_TYPES, createCard, createGroup, getClozeNumbers } from '../models.js';
 import { OcclusionEditor } from '../occlusionCanvas.js';
 
 export class CardEditorModal {
@@ -13,6 +13,9 @@ export class CardEditorModal {
     this.currentCard = null;
     this.occlusionEditor = null;
     this.activeType = CARD_TYPES.BASIC;
+    this.cardsAddedCount = 0;
+    this._lastSelectedGroupId = null;
+    this._feedbackTimeout = null;
     this._createDOM();
   }
 
@@ -29,22 +32,40 @@ export class CardEditorModal {
 
         <div class="modal-body">
           <form id="card-editor-form">
-            <!-- Top Controls: Card Type & Destination Group -->
-            <div class="form-row-2">
-              <div class="form-group">
-                <label class="form-label">Card Type</label>
-                <div class="type-selector-pills">
-                  <button type="button" class="pill-btn active" data-type="${CARD_TYPES.BASIC}">Basic</button>
-                  <button type="button" class="pill-btn" data-type="${CARD_TYPES.REVERSIBLE}">Reversible</button>
-                  <button type="button" class="pill-btn" data-type="${CARD_TYPES.CLOZE}">Cloze</button>
-                  <button type="button" class="pill-btn" data-type="${CARD_TYPES.IMAGE}">Image</button>
-                  <button type="button" class="pill-btn" data-type="${CARD_TYPES.IMAGE_OCCLUSION}">Image Occlusion</button>
+            <!-- 1. Destination Deck / Subject Selection & Quick Creation -->
+            <div class="form-group card-deck-selector-group" style="margin-bottom: 1.15rem; padding-bottom: 0.95rem; border-bottom: 1px solid var(--border-color, #e5e7eb);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                <label class="form-label" for="card-group-select" style="margin-bottom: 0; font-weight: 600;">
+                  🎴 Deck / Subject
+                </label>
+                <button type="button" class="btn btn-ghost btn-xs" id="btn-toggle-inline-new-deck" style="color: var(--primary); font-weight: 600; font-size: 0.82rem; padding: 2px 8px; border-radius: 4px;">
+                  ➕ Create New Deck
+                </button>
+              </div>
+              <select class="form-input" id="card-group-select" required></select>
+
+              <!-- Inline New Deck Form -->
+              <div id="inline-new-deck-panel" class="hidden" style="margin-top: 0.6rem; padding: 0.75rem 0.9rem; background: var(--bg-surface-hover, #f3f4f6); border-radius: 8px; border: 1px dashed var(--border-color, #d1d5db);">
+                <div style="font-size: 0.82rem; font-weight: 600; margin-bottom: 0.35rem; color: var(--text-main);">
+                  New Deck Name
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <input type="text" class="form-input" id="input-inline-deck-name" placeholder="e.g., Biology Unit 3" style="flex: 1; font-size: 0.88rem; padding: 0.45rem 0.65rem;" />
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-inline-save-deck" style="white-space: nowrap; font-size: 0.82rem; padding: 0.45rem 0.8rem;">Create & Select</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="btn-inline-cancel-deck" style="font-size: 0.82rem; padding: 0.45rem 0.6rem;">Cancel</button>
                 </div>
               </div>
+            </div>
 
-              <div class="form-group">
-                <label class="form-label" for="card-group-select">Folder / Subject</label>
-                <select class="form-input" id="card-group-select" required></select>
+            <!-- 2. Card Type Selector -->
+            <div class="form-group" style="margin-bottom: 1.15rem;">
+              <label class="form-label" style="font-weight: 600;">Card Type</label>
+              <div class="type-selector-pills">
+                <button type="button" class="pill-btn active" data-type="${CARD_TYPES.BASIC}">Basic</button>
+                <button type="button" class="pill-btn" data-type="${CARD_TYPES.REVERSIBLE}">Reversible</button>
+                <button type="button" class="pill-btn" data-type="${CARD_TYPES.CLOZE}">Cloze</button>
+                <button type="button" class="pill-btn" data-type="${CARD_TYPES.IMAGE}">Image</button>
+                <button type="button" class="pill-btn" data-type="${CARD_TYPES.IMAGE_OCCLUSION}">Image Occlusion</button>
               </div>
             </div>
 
@@ -227,8 +248,12 @@ export class CardEditorModal {
               </div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; flex-wrap: wrap;">
+              <div id="card-added-feedback" class="hidden" style="margin-right: auto; font-size: 0.88rem; font-weight: 600; color: var(--success, #16a34a); display: flex; align-items: center; gap: 0.35rem;">
+                <span id="card-added-feedback-text">✅ Card added!</span>
+              </div>
               <button type="button" class="btn btn-secondary" id="btn-cancel-card">Cancel</button>
+              <button type="button" class="btn btn-outline" id="btn-add-card-continue" title="Save this card and keep dialog open to add another (Ctrl+Enter)">➕ Add Card</button>
               <button type="submit" class="btn btn-primary" id="btn-save-card">Save Flashcard</button>
             </div>
           </form>
@@ -242,28 +267,56 @@ export class CardEditorModal {
 
   async open(options = {}) {
     this.currentCard = options.card || null;
+    this.cardsAddedCount = 0;
+
+    const feedbackEl = this.modalEl.querySelector('#card-added-feedback');
+    if (feedbackEl) feedbackEl.classList.add('hidden');
+    this._toggleInlineNewDeckPanel(false);
+
     const groups = await storage.getGroups();
     this._populateGroupSelect(groups, options.defaultGroupId || (this.currentCard ? this.currentCard.groupId : null));
 
     const titleEl = this.modalEl.querySelector('#card-editor-title');
-    titleEl.textContent = this.currentCard ? 'Edit Flashcard' : 'Create Flashcard';
+    const btnCancel = this.modalEl.querySelector('#btn-cancel-card');
+    const btnAddContinue = this.modalEl.querySelector('#btn-add-card-continue');
+    const btnSave = this.modalEl.querySelector('#btn-save-card');
 
-    // Populate data
     if (this.currentCard) {
+      titleEl.textContent = 'Edit Flashcard';
+      btnCancel.textContent = 'Cancel';
+      btnSave.textContent = 'Save Flashcard';
+      if (btnAddContinue) btnAddContinue.classList.add('hidden');
       this.activeType = this.currentCard.type || CARD_TYPES.BASIC;
       this._populateCardData(this.currentCard);
     } else {
+      titleEl.textContent = 'Create Flashcard';
+      btnCancel.textContent = 'Cancel';
+      btnSave.textContent = 'Save & Close';
+      if (btnAddContinue) btnAddContinue.classList.remove('hidden');
       this.activeType = CARD_TYPES.BASIC;
       this._resetForm();
     }
 
     this._switchTypeTab(this.activeType);
     this.modalEl.classList.remove('hidden');
+
+    setTimeout(() => {
+      if (!this.currentCard) {
+        const frontInput = this.modalEl.querySelector('#input-card-front');
+        if (frontInput) frontInput.focus();
+      }
+    }, 100);
   }
 
   close() {
     this.modalEl.classList.add('hidden');
     this.currentCard = null;
+    this.cardsAddedCount = 0;
+    this._toggleInlineNewDeckPanel(false);
+    if (this._feedbackTimeout) {
+      clearTimeout(this._feedbackTimeout);
+      this._feedbackTimeout = null;
+    }
   }
 
   _populateGroupSelect(groups, selectedId) {
@@ -281,13 +334,17 @@ export class CardEditorModal {
       }
     }
 
+    let matched = false;
     const appendOptions = (nodes, depth) => {
       for (const node of nodes) {
         const opt = document.createElement('option');
         opt.value = node.id;
         const prefix = depth > 0 ? '— '.repeat(depth) : '';
         opt.textContent = `${prefix}${node.name} (${node.type || 'folder'})`;
-        if (node.id === selectedId) opt.selected = true;
+        if (node.id === selectedId) {
+          opt.selected = true;
+          matched = true;
+        }
         select.appendChild(opt);
 
         if (node.children && node.children.length > 0) {
@@ -297,6 +354,58 @@ export class CardEditorModal {
     };
 
     appendOptions(roots, 0);
+
+    // Option to quickly create a new deck right from dropdown
+    const createOpt = document.createElement('option');
+    createOpt.value = '__create_new__';
+    createOpt.textContent = '➕ Create New Deck...';
+    select.appendChild(createOpt);
+
+    if (matched) {
+      this._lastSelectedGroupId = selectedId;
+    } else if (select.options.length > 1 && select.options[0].value !== '__create_new__') {
+      this._lastSelectedGroupId = select.options[0].value;
+      select.value = this._lastSelectedGroupId;
+    }
+  }
+
+  _toggleInlineNewDeckPanel(forceState) {
+    const panel = this.modalEl.querySelector('#inline-new-deck-panel');
+    if (!panel) return;
+    const isHidden = panel.classList.contains('hidden');
+    const show = typeof forceState === 'boolean' ? forceState : isHidden;
+    panel.classList.toggle('hidden', !show);
+    if (show) {
+      const input = this.modalEl.querySelector('#input-inline-deck-name');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  }
+
+  async _createInlineDeck() {
+    const input = this.modalEl.querySelector('#input-inline-deck-name');
+    if (!input) return null;
+    const name = input.value.trim();
+    if (!name) {
+      input.focus();
+      return null;
+    }
+
+    const newDeck = createGroup({
+      name,
+      type: GROUP_TYPES.CUSTOM
+    });
+    await storage.saveGroup(newDeck);
+    window.dispatchEvent(new CustomEvent('groups-updated'));
+
+    const groups = await storage.getGroups();
+    this._populateGroupSelect(groups, newDeck.id);
+    this._lastSelectedGroupId = newDeck.id;
+    input.value = '';
+    this._toggleInlineNewDeckPanel(false);
+    return newDeck;
   }
 
   _switchTypeTab(type) {
@@ -348,6 +457,10 @@ export class CardEditorModal {
 
   _resetForm() {
     this.modalEl.querySelector('#card-editor-form').reset();
+    if (this._lastSelectedGroupId) {
+      const select = this.modalEl.querySelector('#card-group-select');
+      if (select) select.value = this._lastSelectedGroupId;
+    }
     const defaultOccRadio = this.modalEl.querySelector('input[name="input-occ-mode"][value="hide_all_guess_one"]');
     if (defaultOccRadio) defaultOccRadio.checked = true;
     const defaultClozeRadio = this.modalEl.querySelector('input[name="input-cloze-mode"][value="hide_all_guess_one"]');
@@ -355,6 +468,56 @@ export class CardEditorModal {
     this.modalEl.querySelector('#image-preview-box').classList.add('hidden');
     this.modalEl.querySelector('#occlusion-editor-container').classList.add('hidden');
     this.occlusionEditor = null;
+    this._toggleInlineNewDeckPanel(false);
+  }
+
+  _clearCardInputs() {
+    this.modalEl.querySelector('#input-card-front').value = '';
+    this.modalEl.querySelector('#input-card-back').value = '';
+    this.modalEl.querySelector('#input-cloze-text').value = '';
+    this.modalEl.querySelector('#input-cloze-extra').value = '';
+    this.modalEl.querySelector('#input-image-front').value = '';
+    this.modalEl.querySelector('#input-image-back').value = '';
+    this.modalEl.querySelector('#input-image-url').value = '';
+    this.modalEl.querySelector('#input-occ-title').value = '';
+    this.modalEl.querySelector('#input-occ-url').value = '';
+    this.modalEl.querySelector('#input-card-hint').value = '';
+    this.modalEl.querySelector('#input-card-tags').value = '';
+
+    const previewBox = this.modalEl.querySelector('#image-preview-box');
+    if (previewBox) {
+      previewBox.innerHTML = '';
+      previewBox.classList.add('hidden');
+    }
+
+    const fileInput = this.modalEl.querySelector('#input-image-file');
+    if (fileInput) fileInput.value = '';
+
+    const occFileInput = this.modalEl.querySelector('#input-occ-file');
+    if (occFileInput) occFileInput.value = '';
+
+    const occContainer = this.modalEl.querySelector('#occlusion-editor-container');
+    if (occContainer) occContainer.classList.add('hidden');
+    if (this.occlusionEditor) {
+      this.occlusionEditor.destroy();
+      this.occlusionEditor = null;
+    }
+
+    setTimeout(() => {
+      if (this.activeType === CARD_TYPES.CLOZE) {
+        const el = this.modalEl.querySelector('#input-cloze-text');
+        if (el) el.focus();
+      } else if (this.activeType === CARD_TYPES.IMAGE) {
+        const el = this.modalEl.querySelector('#input-image-front');
+        if (el) el.focus();
+      } else if (this.activeType === CARD_TYPES.IMAGE_OCCLUSION) {
+        const el = this.modalEl.querySelector('#input-occ-title');
+        if (el) el.focus();
+      } else {
+        const el = this.modalEl.querySelector('#input-card-front');
+        if (el) el.focus();
+      }
+    }, 50);
   }
 
   _renderImagePreview(url) {
@@ -414,6 +577,77 @@ export class CardEditorModal {
   _attachEvents() {
     this.modalEl.querySelector('#btn-close-card-editor').onclick = () => this.close();
     this.modalEl.querySelector('#btn-cancel-card').onclick = () => this.close();
+
+    // Inline deck creation events
+    const btnToggleDeck = this.modalEl.querySelector('#btn-toggle-inline-new-deck');
+    if (btnToggleDeck) {
+      btnToggleDeck.onclick = () => this._toggleInlineNewDeckPanel();
+    }
+
+    const btnSaveInlineDeck = this.modalEl.querySelector('#btn-inline-save-deck');
+    if (btnSaveInlineDeck) {
+      btnSaveInlineDeck.onclick = async () => {
+        await this._createInlineDeck();
+      };
+    }
+
+    const btnCancelInlineDeck = this.modalEl.querySelector('#btn-inline-cancel-deck');
+    if (btnCancelInlineDeck) {
+      btnCancelInlineDeck.onclick = () => {
+        this._toggleInlineNewDeckPanel(false);
+        const input = this.modalEl.querySelector('#input-inline-deck-name');
+        if (input) input.value = '';
+      };
+    }
+
+    const inputInlineDeck = this.modalEl.querySelector('#input-inline-deck-name');
+    if (inputInlineDeck) {
+      inputInlineDeck.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          await this._createInlineDeck();
+        } else if (e.key === 'Escape') {
+          this._toggleInlineNewDeckPanel(false);
+        }
+      });
+    }
+
+    const groupSelect = this.modalEl.querySelector('#card-group-select');
+    if (groupSelect) {
+      groupSelect.addEventListener('change', () => {
+        if (groupSelect.value === '__create_new__') {
+          this._toggleInlineNewDeckPanel(true);
+          if (this._lastSelectedGroupId) {
+            groupSelect.value = this._lastSelectedGroupId;
+          }
+        } else {
+          this._lastSelectedGroupId = groupSelect.value;
+        }
+      });
+    }
+
+    // "Add Card" button (keeps dialog open for continuous entry)
+    const btnAddContinue = this.modalEl.querySelector('#btn-add-card-continue');
+    if (btnAddContinue) {
+      btnAddContinue.onclick = async (e) => {
+        e.preventDefault();
+        await this._saveCardData(false);
+      };
+    }
+
+    // Form keydown shortcut: Ctrl+Enter / Cmd+Enter to quickly add card
+    const form = this.modalEl.querySelector('#card-editor-form');
+    form.addEventListener('keydown', async (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (e.target && e.target.id === 'input-inline-deck-name') return;
+        e.preventDefault();
+        if (!this.currentCard) {
+          await this._saveCardData(false);
+        } else {
+          await this._saveCardData(true);
+        }
+      }
+    });
 
     // Type pills
     this.modalEl.querySelectorAll('.pill-btn').forEach(btn => {
@@ -534,12 +768,28 @@ export class CardEditorModal {
     // Form submit
     this.modalEl.querySelector('#card-editor-form').onsubmit = async (e) => {
       e.preventDefault();
-      await this._handleSave();
+      await this._saveCardData(true);
     };
   }
 
   async _handleSave() {
-    const groupId = this.modalEl.querySelector('#card-group-select').value;
+    return this._saveCardData(true);
+  }
+
+  async _saveCardData(closeAfter = true) {
+    // If user entered a name in the inline new deck field, create and select it first
+    const inlineDeckInput = this.modalEl.querySelector('#input-inline-deck-name');
+    if (inlineDeckInput && inlineDeckInput.value.trim()) {
+      await this._createInlineDeck();
+    }
+
+    const groupSelect = this.modalEl.querySelector('#card-group-select');
+    let groupId = groupSelect ? groupSelect.value : '';
+    if (!groupId || groupId === '__create_new__') {
+      alert('Please select or create a destination deck.');
+      return false;
+    }
+
     const hint = this.modalEl.querySelector('#input-card-hint').value.trim();
     const tagsStr = this.modalEl.querySelector('#input-card-tags').value.trim();
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
@@ -557,7 +807,7 @@ export class CardEditorModal {
       back = this.modalEl.querySelector('#input-card-back').value.trim();
       if (!front || !back) {
         alert('Please fill in both the Front and Back fields.');
-        return;
+        return false;
       }
     } else if (this.activeType === CARD_TYPES.CLOZE) {
       clozeText = this.modalEl.querySelector('#input-cloze-text').value.trim();
@@ -565,7 +815,7 @@ export class CardEditorModal {
       front = 'Cloze: ' + clozeText.substring(0, 40) + '...';
       if (!clozeText) {
         alert('Please enter text for the cloze card.');
-        return;
+        return false;
       }
       const clozeRadio = this.modalEl.querySelector('input[name="input-cloze-mode"]:checked');
       if (clozeRadio) clozeMode = clozeRadio.value;
@@ -575,7 +825,7 @@ export class CardEditorModal {
       imageUrl = this.modalEl.querySelector('#input-image-url').value.trim();
       if (!imageUrl || !back) {
         alert('Please provide an image and the answer.');
-        return;
+        return false;
       }
     }
 
@@ -585,12 +835,12 @@ export class CardEditorModal {
       imageUrl = this.modalEl.querySelector('#input-occ-url').value.trim();
       if (!imageUrl) {
         alert('Please upload or provide an image for the occlusion card.');
-        return;
+        return false;
       }
       imageOcclusions = this.occlusionEditor ? this.occlusionEditor.getBoxes() : [];
       if (imageOcclusions.length === 0) {
         alert('Please draw at least one occlusion box over the image diagram.');
-        return;
+        return false;
       }
       const modeRadio = this.modalEl.querySelector('input[name="input-occ-mode"]:checked');
       if (modeRadio) occlusionMode = modeRadio.value;
@@ -611,13 +861,40 @@ export class CardEditorModal {
       imageOcclusions,
       occlusionMode,
       boxSrs: this.currentCard ? this.currentCard.boxSrs : {},
+      reversibleSrs: this.currentCard ? this.currentCard.reversibleSrs : {},
       tags
     };
 
     const saved = createCard(cardData);
     await storage.saveCard(saved);
 
-    this.close();
     window.dispatchEvent(new CustomEvent('card-saved', { detail: { card: saved } }));
+
+    if (closeAfter) {
+      this.close();
+    } else {
+      this.cardsAddedCount = (this.cardsAddedCount || 0) + 1;
+      const btnCancel = this.modalEl.querySelector('#btn-cancel-card');
+      if (btnCancel) btnCancel.textContent = 'Done';
+
+      const selectedOpt = groupSelect.options[groupSelect.selectedIndex];
+      const rawDeckName = selectedOpt ? selectedOpt.textContent : 'deck';
+      const cleanDeckName = rawDeckName.replace(/^[—\s]+/, '').split(' (')[0];
+
+      const feedbackEl = this.modalEl.querySelector('#card-added-feedback');
+      const feedbackText = this.modalEl.querySelector('#card-added-feedback-text');
+      if (feedbackEl && feedbackText) {
+        feedbackText.textContent = `Card #${this.cardsAddedCount} added to "${cleanDeckName}"!`;
+        feedbackEl.classList.remove('hidden');
+        if (this._feedbackTimeout) clearTimeout(this._feedbackTimeout);
+        this._feedbackTimeout = setTimeout(() => {
+          if (feedbackEl) feedbackEl.classList.add('hidden');
+        }, 3500);
+      }
+
+      this._clearCardInputs();
+    }
+
+    return true;
   }
 }

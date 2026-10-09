@@ -194,7 +194,29 @@ export function getReviewItemsForCard(card) {
     }
   }
 
-  // 3. Other cards (Basic, Reversible, Image, etc.)
+  // 3. Reversible cards (Forward & Reverse review items)
+  if (card.type === CARD_TYPES.REVERSIBLE) {
+    const fwdSrs = (card.reversibleSrs && card.reversibleSrs.fwd) || card.srs || DEFAULT_SRS_DATA;
+    const revSrs = (card.reversibleSrs && card.reversibleSrs.rev) || DEFAULT_SRS_DATA;
+    return [
+      {
+        ...card,
+        reviewItemId: `${card.id}_fwd`,
+        isReverse: false,
+        parentCard: card,
+        srs: { ...DEFAULT_SRS_DATA, ...fwdSrs }
+      },
+      {
+        ...card,
+        reviewItemId: `${card.id}_rev`,
+        isReverse: true,
+        parentCard: card,
+        srs: { ...DEFAULT_SRS_DATA, ...revSrs }
+      }
+    ];
+  }
+
+  // 4. Other cards (Basic, Single Cloze, Single Image, etc.)
   return [{
     ...card,
     reviewItemId: card.id,
@@ -229,6 +251,10 @@ export function getCardCount(card) {
       return uniqueNums.length;
     }
     return 1;
+  }
+
+  if (card.type === CARD_TYPES.REVERSIBLE) {
+    return 2;
   }
 
   return 1;
@@ -266,6 +292,15 @@ export function getDueCountForCard(card, targetDate = getDateString()) {
         return isCardDue({ srs: clozeSrs }, targetDate);
       }).length;
     }
+  }
+
+  if (card.type === CARD_TYPES.REVERSIBLE) {
+    const fwdSrs = (card.reversibleSrs && card.reversibleSrs.fwd) || card.srs || DEFAULT_SRS_DATA;
+    const revSrs = (card.reversibleSrs && card.reversibleSrs.rev) || DEFAULT_SRS_DATA;
+    let due = 0;
+    if (isCardDue({ srs: fwdSrs }, targetDate)) due++;
+    if (isCardDue({ srs: revSrs }, targetDate)) due++;
+    return due;
   }
 
   return isCardDue(card, targetDate) ? 1 : 0;

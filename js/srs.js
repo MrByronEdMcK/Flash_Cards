@@ -310,14 +310,21 @@ export function getDailyReviewQueue(reviewItems = [], settings = {}, reviewLogs 
     }
   }
 
-  // Count how many new cards were already graduated/completed today in this pool
+  // Count how many new cards/items were already graduated/completed today in this pool
   const itemCardIds = new Set(reviewItems.map(i => i.parentCard ? i.parentCard.id : i.id));
-  const graduatedCardIds = new Set(
-    (reviewLogs || [])
-      .filter(log => log.date === todayStr && (log.oldInterval || 0) === 0 && (log.newInterval || 0) > 0 && itemCardIds.has(log.cardId))
-      .map(log => log.cardId)
+  const itemReviewIds = new Set(reviewItems.map(i => i.reviewItemId || i.id));
+
+  const graduatedTodayLogs = (reviewLogs || []).filter(log => 
+    log.date === todayStr && 
+    (log.oldInterval || 0) === 0 && 
+    (log.newInterval || 0) > 0 && 
+    (itemReviewIds.has(log.reviewItemId) || itemCardIds.has(log.cardId))
   );
-  const todayNewDone = graduatedCardIds.size;
+
+  const hasReviewItemIds = graduatedTodayLogs.some(l => l.reviewItemId);
+  const todayNewDone = hasReviewItemIds
+    ? new Set(graduatedTodayLogs.map(l => l.reviewItemId || l.cardId)).size
+    : graduatedTodayLogs.length;
 
   // Capped new items for today
   const newQuota = Math.max(0, Math.min(dailyNewLimit - todayNewDone, unlearnedItems.length));

@@ -9,7 +9,7 @@
 
 import { storage } from '../storage.js';
 import { isCardDue, getDailyReviewQueue, getDateString } from '../srs.js';
-import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
+import { CARD_TYPES, getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
 export async function renderDashboard(container, navigateTo) {
   // Clear any existing timer interval
@@ -91,28 +91,39 @@ export async function renderDashboard(container, navigateTo) {
   // Compute counts for Hero & Badges based on active focus
   const totalCards = activeCards.reduce((sum, c) => sum + getCardCount(c), 0);
   const totalDueCards = dailyQueue.totalDailyCount;
-  const masteredOrLearningCards = activeCards.filter(c => {
+  const masteredOrLearningCount = activeCards.reduce((sum, c) => {
+    if (c.type === CARD_TYPES.CLOZE && c.clozeSrs && typeof c.clozeSrs === 'object') {
+      const activeCount = Object.values(c.clozeSrs).filter(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0))).length;
+      if (activeCount > 0) return sum + activeCount;
+    }
+    if (c.type === CARD_TYPES.IMAGE_OCCLUSION && c.boxSrs && typeof c.boxSrs === 'object') {
+      const activeCount = Object.values(c.boxSrs).filter(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0))).length;
+      if (activeCount > 0) return sum + activeCount;
+    }
+    if (c.type === CARD_TYPES.REVERSIBLE && c.reversibleSrs && typeof c.reversibleSrs === 'object') {
+      const activeCount = Object.values(c.reversibleSrs).filter(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0))).length;
+      if (activeCount > 0) return sum + activeCount;
+    }
     if (c.srs && (c.srs.state === 'review' || c.srs.state === 'learning' || (c.srs.interval && c.srs.interval > 0) || (c.srs.reps && c.srs.reps > 0))) {
-      return true;
+      return sum + getCardCount(c);
     }
-    if (c.clozeSrs && typeof c.clozeSrs === 'object') {
-      if (Object.values(c.clozeSrs).some(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0)))) {
-        return true;
-      }
-    }
-    if (c.boxSrs && typeof c.boxSrs === 'object') {
-      if (Object.values(c.boxSrs).some(s => s && (s.state === 'review' || s.state === 'learning' || (s.interval && s.interval > 0) || (s.reps && s.reps > 0)))) {
-        return true;
-      }
-    }
-    return false;
-  });
+    return sum;
+  }, 0);
 
   const targetDailyGoal = settings.dailyNewLimit || 20;
   const todayLogs = (reviewLogs || []).filter(log => log.date === todayStr);
-  const cardsReviewedToday = settings.lastActiveDate === todayStr 
-    ? (settings.cardsReviewedToday || todayLogs.length) 
-    : todayLogs.length;
+  let cardsReviewedToday = 0;
+  if (settings.lastActiveDate === todayStr && todayLogs.length > 0) {
+    const hasItemIds = todayLogs.some(l => l.reviewItemId);
+    if (hasItemIds) {
+      cardsReviewedToday = new Set(todayLogs.map(l => l.reviewItemId || l.cardId)).size;
+    } else {
+      // Legacy logs: each graduation log (oldInterval=0 -> newInterval>0) represents 1 graduated item
+      const gradCount = todayLogs.filter(l => (l.oldInterval || 0) === 0 && (l.newInterval || 0) > 0).length;
+      const reviewCards = new Set(todayLogs.filter(l => (l.oldInterval || 0) > 0).map(l => l.cardId)).size;
+      cardsReviewedToday = Math.max(gradCount + reviewCards, new Set(todayLogs.map(l => l.cardId)).size);
+    }
+  }
   const progressPercent = Math.min(100, Math.round((cardsReviewedToday / targetDailyGoal) * 100));
 
   // Root groups (Classes)
@@ -146,10 +157,11 @@ export async function renderDashboard(container, navigateTo) {
   const simulatedReviewPool = [];
 
   if (isFocusActive) {
-    // 1. New cards introduced today (completed today + remaining today):
+    // 1. Remaining new cards to introduce today (pending review):
     // When reviewed with "Good", their interval becomes 1 day, due tomorrow (offset 1).
-    const totalTodayNew = todayNewDone + todayNewRemaining;
-    for (let i = 0; i < totalTodayNew; i++) {
+    // Note: Cards already completed today (todayNewDone) have already graduated with dueDate > todayStr
+    // in the database and are accurately captured in (3) futureDueItems below!
+    for (let i = 0; i < todayNewRemaining; i++) {
       simulatedReviewPool.push({
         interval: 1,
         easeFactor: 2.5,
@@ -241,8 +253,22 @@ export async function renderDashboard(container, navigateTo) {
     if (offset < 0) {
       // Past days: based on actual review logs
       const dayLogs = focusedLogs.filter(l => l.date === dateStr);
-      newCount = dayLogs.filter(l => (l.oldInterval || 0) === 0).length;
-      reviewCount = dayLogs.filter(l => (l.oldInterval || 0) > 0).length;
+      const dayNewCardIds = new Set(dayLogs.filter(l => (l.oldInterval || 0) === 0).map(l => l.cardId));
+      const dayReviewCardIds = new Set(dayLogs.filter(l => (l.oldInterval || 0) > 0).map(l => l.cardId));
+      for (const cid of dayNewCardIds) {
+        dayReviewCardIds.delete(cid);
+      }
+
+      newCount = 0;
+      for (const cid of dayNewCardIds) {
+        const card = activeCards.find(c => c.id === cid);
+        newCount += card ? getCardCount(card) : 1;
+      }
+      reviewCount = 0;
+      for (const cid of dayReviewCardIds) {
+        const card = activeCards.find(c => c.id === cid);
+        reviewCount += card ? getCardCount(card) : 1;
+      }
       statusLabel = `${Math.abs(offset)} days ago`;
     } else if (offset === 0) {
       // Today: completed + pending remaining in focus
@@ -536,7 +562,7 @@ export async function renderDashboard(container, navigateTo) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
           </div>
           <div class="stat-info">
-            <div class="stat-number">${masteredOrLearningCards.length}</div>
+            <div class="stat-number">${masteredOrLearningCount}</div>
             <div class="stat-title">Mastered / Learning</div>
           </div>
         </div>

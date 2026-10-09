@@ -4,8 +4,8 @@
  */
 
 import { storage } from '../storage.js';
-import { GROUP_TYPES, CARD_TYPES, createGroup, createCard } from '../models.js';
-import { IMPORT_SERVICES, parseImport } from '../importers.js';
+import { GROUP_TYPES, CARD_TYPES, OCCLUSION_MODES, createGroup, createCard } from '../models.js';
+import { IMPORT_SERVICES, parseImport, fetchGizmoShareLink, AI_PROMPT_TEMPLATE, AI_SAMPLE_CARDS } from '../importers.js';
 import { getDateString } from '../srs.js';
 
 function escapeHtml(str) {
@@ -183,14 +183,29 @@ export class ModalManager {
         <div class="modal-body">
           <div class="io-tabs">
             <button class="tab-btn active" id="tab-btn-import">📥 Import Cards</button>
+            <button class="tab-btn" id="tab-btn-ai-template">✨ AI Prompt Template</button>
             <button class="tab-btn" id="tab-btn-export">📤 Export & Backup</button>
           </div>
 
           <!-- Import Tab -->
           <div id="io-section-import" class="io-section">
             <div id="import-form-view">
-              <p class="io-description">
-                Import cards from <strong>Anki</strong>, <strong>Quizlet</strong>, <strong>RemNote</strong>, <strong>Brainscape</strong>, <strong>Cram.com</strong>, <strong>Knowt</strong>, <strong>CSV/TSV</strong>, or a <strong>StudyCards Backup</strong>.
+              <!-- AI Prompt Template Quick Banner -->
+              <div class="ai-prompt-banner" id="banner-ai-template">
+                <div class="ai-banner-content">
+                  <span class="ai-banner-icon">🤖</span>
+                  <div class="ai-banner-text">
+                    <strong class="ai-banner-title">Create Flashcards with AI</strong>
+                    <div class="ai-banner-sub">Turn your lecture notes or textbooks into Basic, Reversible, and Cloze cards using ChatGPT, Claude, or Gemini.</div>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-banner-ai-template">
+                  View AI Template ✨
+                </button>
+              </div>
+
+              <p class="io-description" style="margin-top: 10px;">
+                Import cards from <strong>Gizmo.ai</strong>, <strong>Quizlet</strong>, <strong>Anki</strong>, <strong>RemNote</strong>, <strong>Brainscape</strong>, <strong>Cram.com</strong>, <strong>Knowt</strong>, <strong>CSV/TSV</strong>, or a <strong>StudyCards Backup</strong>.
               </p>
 
               <!-- Service Selector -->
@@ -198,6 +213,7 @@ export class ModalManager {
                 <label class="form-label" for="select-import-service">1. Flashcard Source</label>
                 <select class="form-input" id="select-import-service">
                   <option value="auto">✨ Auto-Detect Format</option>
+                  <option value="gizmo">⚡ Gizmo.ai (Share Link / Deck)</option>
                   <option value="quizlet">🔵 Quizlet (Text / TSV / CSV)</option>
                   <option value="anki">🟢 Anki (Plain Text .txt / .tsv with Cloze)</option>
                   <option value="remnote">🟣 RemNote (Markdown / Text .md / .txt)</option>
@@ -208,6 +224,19 @@ export class ModalManager {
                   <option value="studycards">🎴 StudyCards Backup (.json)</option>
                 </select>
                 <div id="import-service-guide" class="import-service-guide"></div>
+
+                <!-- Gizmo.ai Share Link Input (Shown when Gizmo is chosen) -->
+                <div id="panel-gizmo-link" class="gizmo-link-panel hidden">
+                  <div class="gizmo-link-header">
+                    <label class="form-label" for="input-gizmo-url" style="margin: 0; font-weight: 700;">🔗 Gizmo.ai Deck Share Link</label>
+                    <span class="gizmo-link-hint">Paste link from gizmo.ai</span>
+                  </div>
+                  <div class="gizmo-link-input-group">
+                    <input type="url" class="form-input" id="input-gizmo-url" placeholder="https://app.gizmo.ai/deck/... or https://gizmo.ai/deck/..." />
+                    <button type="button" class="btn btn-primary" id="btn-fetch-gizmo">⚡ Fetch Deck</button>
+                  </div>
+                  <div id="gizmo-fetch-status" class="gizmo-fetch-status hidden"></div>
+                </div>
               </div>
 
               <!-- Input Method Switcher -->
@@ -238,25 +267,25 @@ export class ModalManager {
                 </div>
 
                 <!-- Delimiter / Separator Options (Quizlet, CSV, Text) -->
-                <div id="group-delimiter-options" class="form-group" style="margin-top: 10px; background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem;">
-                  <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;">
-                    Delimiter Options (Quizlet / Delimited Text)
+                <div id="group-delimiter-options" class="delimiter-options-card">
+                  <div class="delimiter-options-title">
+                    <span>⚙️ Delimiter Options (Quizlet / Delimited Text)</span>
                   </div>
-                  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <div style="flex: 1; min-width: 140px;">
-                      <label class="form-label" style="font-size: 0.78rem; margin-bottom: 3px;" for="select-card-sep">Cards Separated By:</label>
-                      <select class="form-input form-input-sm" id="select-card-sep">
-                        <option value="auto">✨ Auto-Detect (Newline or Semicolon)</option>
-                        <option value="semicolon">Semicolon ( ; ) (Multi-line cards)</option>
+                  <div class="delimiter-options-grid">
+                    <div class="delimiter-field">
+                      <label class="form-label" for="select-card-sep">Cards Separated By:</label>
+                      <select class="form-input" id="select-card-sep">
+                        <option value="auto">✨ Auto-Detect (Newline or ;)</option>
+                        <option value="semicolon">Semicolon ( ; ) — Multi-line cards</option>
                         <option value="newline">New Line ( \n )</option>
                       </select>
                     </div>
-                    <div style="flex: 1; min-width: 140px;">
-                      <label class="form-label" style="font-size: 0.78rem; margin-bottom: 3px;" for="select-field-sep">Question &amp; Answer Separated By:</label>
-                      <select class="form-input form-input-sm" id="select-field-sep">
+                    <div class="delimiter-field">
+                      <label class="form-label" for="select-field-sep">Question &amp; Answer Separated By:</label>
+                      <select class="form-input" id="select-field-sep">
                         <option value="auto">✨ Auto-Detect (Tab or Comma)</option>
                         <option value="comma">Comma ( , )</option>
-                        <option value="tab">Tab ( \t )</option>
+                        <option value="tab">Tab ( ⇥ )</option>
                         <option value="semicolon">Semicolon ( ; )</option>
                       </select>
                     </div>
@@ -359,6 +388,63 @@ export class ModalManager {
             </div>
           </div>
 
+          <!-- AI Prompt Template Tab -->
+          <div id="io-section-ai-template" class="io-section hidden">
+            <div class="ai-template-container">
+              <div class="ai-template-header">
+                <span class="ai-template-badge">🤖 Any AI Model (ChatGPT, Claude, Gemini, DeepSeek)</span>
+                <h4 class="ai-template-title">AI Flashcard Generator Prompt Template</h4>
+                <p class="ai-template-subtitle">
+                  Copy this prompt and paste it into any AI model along with your lecture notes, study guide, or textbook excerpt. The AI will output perfectly formatted cards ready for 1-click import into StudyCards!
+                </p>
+              </div>
+
+              <!-- Action Bar -->
+              <div class="ai-template-actions">
+                <button type="button" class="btn btn-primary" id="btn-copy-ai-template">
+                  📋 Copy Prompt Template
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-download-ai-template">
+                  💾 Download Template (.txt)
+                </button>
+              </div>
+
+              <!-- Card Types Cards Breakdown -->
+              <div class="ai-types-overview">
+                <div class="ai-type-pill basic">
+                  <span class="type-icon">🟢</span>
+                  <div>
+                    <strong>Basic (1-Way)</strong>
+                    <div class="type-syntax">Question, Answer;</div>
+                  </div>
+                </div>
+                <div class="ai-type-pill reversible">
+                  <span class="type-icon">🟣</span>
+                  <div>
+                    <strong>Reversible (2-Way)</strong>
+                    <div class="type-syntax">Term [rev], Definition;</div>
+                  </div>
+                </div>
+                <div class="ai-type-pill cloze">
+                  <span class="type-icon">🔵</span>
+                  <div>
+                    <strong>Cloze Deletion</strong>
+                    <div class="type-syntax">Text with {{c1::blank}}.;</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Prompt Monospace Viewer -->
+              <div class="ai-prompt-viewer-card">
+                <div class="ai-viewer-bar">
+                  <span class="ai-viewer-title">System Prompt & Instructions</span>
+                  <button type="button" class="btn btn-sm btn-secondary" id="btn-viewer-copy">📋 Copy</button>
+                </div>
+                <textarea class="form-input font-mono ai-prompt-textarea" id="textarea-ai-prompt" readonly rows="14"></textarea>
+              </div>
+            </div>
+          </div>
+
           <!-- Export Tab -->
           <div id="io-section-export" class="io-section hidden">
             <p class="io-description">
@@ -401,22 +487,26 @@ export class ModalManager {
 
     const tabExport = el.querySelector('#tab-btn-export');
     const tabImport = el.querySelector('#tab-btn-import');
+    const tabAi = el.querySelector('#tab-btn-ai-template');
     const secExport = el.querySelector('#io-section-export');
     const secImport = el.querySelector('#io-section-import');
+    const secAi = el.querySelector('#io-section-ai-template');
+    const btnBannerAi = el.querySelector('#btn-banner-ai-template');
 
-    tabExport.onclick = () => {
-      tabExport.classList.add('active');
-      tabImport.classList.remove('active');
-      secExport.classList.remove('hidden');
-      secImport.classList.add('hidden');
+    const switchTab = (tabKey) => {
+      tabImport.classList.toggle('active', tabKey === 'import');
+      if (tabAi) tabAi.classList.toggle('active', tabKey === 'ai');
+      tabExport.classList.toggle('active', tabKey === 'export');
+
+      secImport.classList.toggle('hidden', tabKey !== 'import');
+      if (secAi) secAi.classList.toggle('hidden', tabKey !== 'ai');
+      secExport.classList.toggle('hidden', tabKey !== 'export');
     };
 
-    tabImport.onclick = () => {
-      tabImport.classList.add('active');
-      tabExport.classList.remove('active');
-      secImport.classList.remove('hidden');
-      secExport.classList.add('hidden');
-    };
+    tabExport.onclick = () => switchTab('export');
+    tabImport.onclick = () => switchTab('import');
+    if (tabAi) tabAi.onclick = () => switchTab('ai');
+    if (btnBannerAi) btnBannerAi.onclick = () => switchTab('ai');
 
     // Export handler
     el.querySelector('#btn-trigger-export').onclick = async () => {
@@ -447,6 +537,10 @@ export class ModalManager {
 
     const selectService = el.querySelector('#select-import-service');
     const guideBox = el.querySelector('#import-service-guide');
+    const panelGizmo = el.querySelector('#panel-gizmo-link');
+    const inputGizmoUrl = el.querySelector('#input-gizmo-url');
+    const btnFetchGizmo = el.querySelector('#btn-fetch-gizmo');
+    const statusGizmo = el.querySelector('#gizmo-fetch-status');
     const groupDelimiterOptions = el.querySelector('#group-delimiter-options');
     const selectCardSep = el.querySelector('#select-card-sep');
     const selectFieldSep = el.querySelector('#select-field-sep');
@@ -485,21 +579,106 @@ export class ModalManager {
     const btnDigestClose = el.querySelector('#btn-digest-close');
     const btnDigestView = el.querySelector('#btn-digest-view');
 
+    // AI Prompt Template Tab Handlers
+    const textareaAiPrompt = el.querySelector('#textarea-ai-prompt');
+    if (textareaAiPrompt) {
+      textareaAiPrompt.value = AI_PROMPT_TEMPLATE;
+    }
+
+    const btnCopyAi = el.querySelector('#btn-copy-ai-template');
+    const btnViewerCopy = el.querySelector('#btn-viewer-copy');
+    const btnDownloadAi = el.querySelector('#btn-download-ai-template');
+
+    const handleCopyPrompt = async (triggerBtn) => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(AI_PROMPT_TEMPLATE);
+        } else if (textareaAiPrompt) {
+          textareaAiPrompt.select();
+          document.execCommand('copy');
+        }
+        const originalHtml = triggerBtn.innerHTML;
+        triggerBtn.innerHTML = '✅ Copied to Clipboard!';
+        setTimeout(() => {
+          triggerBtn.innerHTML = originalHtml;
+        }, 2200);
+      } catch (err) {
+        alert('Failed to copy to clipboard automatically. You can copy the text manually from the box below!');
+      }
+    };
+
+    if (btnCopyAi) btnCopyAi.onclick = () => handleCopyPrompt(btnCopyAi);
+    if (btnViewerCopy) btnViewerCopy.onclick = () => handleCopyPrompt(btnViewerCopy);
+
+    if (btnDownloadAi) {
+      btnDownloadAi.onclick = () => {
+        const blob = new Blob([AI_PROMPT_TEMPLATE], { type: 'text/plain;charset=utf-8' });
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = u;
+        a.download = 'StudyCards_AI_Prompt_Template.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(u);
+      };
+    }
+
+    // Gizmo Share Link Fetcher Handler
+    if (btnFetchGizmo) {
+      btnFetchGizmo.onclick = async () => {
+        const url = (inputGizmoUrl.value || '').trim();
+        if (!url) {
+          statusGizmo.innerHTML = '<span style="color: var(--danger-text);">⚠️ Please enter a Gizmo share link.</span>';
+          statusGizmo.classList.remove('hidden');
+          return;
+        }
+        statusGizmo.innerHTML = '<span style="color: var(--primary);">⏳ Fetching deck from Gizmo.ai...</span>';
+        statusGizmo.classList.remove('hidden');
+        btnFetchGizmo.disabled = true;
+        btnFetchGizmo.textContent = '⏳ Fetching...';
+
+        try {
+          const result = await fetchGizmoShareLink(url);
+          currentParsed = result;
+          if (result.deckName && (!inputDeckName.value || inputDeckName.dataset.autoFilled)) {
+            inputDeckName.value = result.deckName;
+            inputDeckName.dataset.autoFilled = 'true';
+          }
+          statusGizmo.innerHTML = `<span style="color: var(--success-text);">✅ Successfully loaded <strong>${result.cards.length} cards</strong> from "${escapeHtml(result.deckName)}"!</span>`;
+          btnFetchGizmo.disabled = false;
+          btnFetchGizmo.textContent = '⚡ Fetch Deck';
+          runParseAndPreview(true);
+        } catch (err) {
+          btnFetchGizmo.disabled = false;
+          btnFetchGizmo.textContent = '⚡ Fetch Deck';
+          statusGizmo.innerHTML = `<span style="color: var(--danger-text); font-size: 0.82rem;">❌ ${escapeHtml(err.message)}</span>`;
+        }
+      };
+    }
+
     // Service Guide updates
     const updateServiceGuide = (serviceKey) => {
       if (groupDelimiterOptions) {
-        if (serviceKey === 'studycards') {
+        if (serviceKey === 'studycards' || serviceKey === 'gizmo') {
           groupDelimiterOptions.classList.add('hidden');
         } else {
           groupDelimiterOptions.classList.remove('hidden');
         }
       }
+      if (panelGizmo) {
+        if (serviceKey === 'gizmo') {
+          panelGizmo.classList.remove('hidden');
+        } else {
+          panelGizmo.classList.add('hidden');
+        }
+      }
       const s = IMPORT_SERVICES[serviceKey];
       if (s && s.instructions) {
-        guideBox.innerHTML = `<strong>How to export from ${escapeHtml(s.name)}:</strong><br/>${escapeHtml(s.instructions)}`;
+        guideBox.innerHTML = `<strong>How to import from ${escapeHtml(s.name)}:</strong><br/>${escapeHtml(s.instructions)}`;
         guideBox.classList.remove('hidden');
       } else if (serviceKey === 'auto') {
-        guideBox.innerHTML = `⚡ <strong>Auto-Detect:</strong> StudyCards will automatically identify format signatures from Quizlet, Anki, RemNote, Brainscape, Cram, Knowt, CSV/TSV, and StudyCards JSON.`;
+        guideBox.innerHTML = `⚡ <strong>Auto-Detect:</strong> StudyCards will automatically identify format signatures from Gizmo.ai, Quizlet, Anki, RemNote, Brainscape, Cram, Knowt, CSV/TSV, and StudyCards JSON.`;
         guideBox.classList.remove('hidden');
       } else {
         guideBox.classList.add('hidden');
@@ -601,6 +780,13 @@ export class ModalManager {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         currentPasteText = textareaPaste.value;
+        const trimmed = currentPasteText.trim();
+        // Auto-detect Gizmo URL pasted in text box
+        if ((trimmed.startsWith('http://') || trimmed.startsWith('https://')) && trimmed.includes('gizmo.ai')) {
+          if (inputGizmoUrl) inputGizmoUrl.value = trimmed;
+          selectService.value = 'gizmo';
+          updateServiceGuide('gizmo');
+        }
         runParseAndPreview();
       }, 150);
     });
@@ -612,39 +798,56 @@ export class ModalManager {
     };
 
     // Live Parser & Preview Function
-    const runParseAndPreview = () => {
-      const rawText = (currentInputMode === 'file' ? currentFileText : currentPasteText) || '';
-      const chosenService = selectService.value;
+    const runParseAndPreview = (useExistingParsed = false) => {
+      let parsed = (useExistingParsed && currentParsed) ? currentParsed : null;
 
-      if (!rawText.trim()) {
-        previewBox.classList.add('hidden');
-        btnTriggerImport.disabled = true;
-        btnTriggerImport.textContent = '📥 Import Cards Now';
-        currentParsed = null;
-        return;
+      if (!parsed) {
+        const rawText = (currentInputMode === 'file' ? currentFileText : currentPasteText) || '';
+        const chosenService = selectService.value;
+
+        if (!rawText.trim()) {
+          previewBox.classList.add('hidden');
+          btnTriggerImport.disabled = true;
+          btnTriggerImport.textContent = '📥 Import Cards Now';
+          currentParsed = null;
+          return;
+        }
+
+        const cardSepVal = selectCardSep ? selectCardSep.value : 'auto';
+        const fieldSepVal = selectFieldSep ? selectFieldSep.value : 'auto';
+
+        let cardSep = null;
+        if (cardSepVal === 'semicolon') cardSep = ';';
+        else if (cardSepVal === 'newline') cardSep = '\n';
+
+        let fieldSep = null;
+        if (fieldSepVal === 'comma') fieldSep = ',';
+        else if (fieldSepVal === 'tab') fieldSep = '\t';
+        else if (fieldSepVal === 'semicolon') fieldSep = ';';
+
+        parsed = parseImport(rawText, chosenService, {
+          fileName: currentFileName,
+          deckName: inputDeckName.value.trim(),
+          cardSeparator: cardSep,
+          fieldSeparator: fieldSep
+        });
+        currentParsed = parsed;
       }
 
-      const cardSepVal = selectCardSep ? selectCardSep.value : 'auto';
-      const fieldSepVal = selectFieldSep ? selectFieldSep.value : 'auto';
-
-      let cardSep = null;
-      if (cardSepVal === 'semicolon') cardSep = ';';
-      else if (cardSepVal === 'newline') cardSep = '\n';
-
-      let fieldSep = null;
-      if (fieldSepVal === 'comma') fieldSep = ',';
-      else if (fieldSepVal === 'tab') fieldSep = '\t';
-      else if (fieldSepVal === 'semicolon') fieldSep = ';';
-
-      const parsed = parseImport(rawText, chosenService, {
-        fileName: currentFileName,
-        deckName: inputDeckName.value.trim(),
-        cardSeparator: cardSep,
-        fieldSeparator: fieldSep
-      });
-      currentParsed = parsed;
-
       previewBox.classList.remove('hidden');
+
+      // Gizmo URL only detected (prompt user to click Fetch)
+      if (parsed.isGizmoUrlOnly) {
+        groupDestPicker.classList.add('hidden');
+        groupNativeBackup.classList.add('hidden');
+        previewTitle.innerHTML = `<span>🔗</span> <span>Gizmo share link detected. Click <strong>⚡ Fetch Deck</strong> above to load the cards!</span>`;
+        previewBadges.innerHTML = `<span class="type-tag-badge" style="background: rgba(99,102,241,0.12); color: #6366f1;">Gizmo.ai Link</span>`;
+        warningsBox.classList.add('hidden');
+        samplesWrapper.classList.add('hidden');
+        btnTriggerImport.disabled = true;
+        btnTriggerImport.textContent = '⚡ Click Fetch Deck Above';
+        return;
+      }
 
       // Native StudyCards Backup format
       if (parsed.isNativeBackup && parsed.success) {
@@ -697,7 +900,17 @@ export class ModalManager {
       const types = parsed.stats.cardTypes || {};
       let badgesHtml = '';
       if (types.basic) badgesHtml += `<span class="type-tag-badge basic">${types.basic} Basic</span>`;
-      if (types.cloze) badgesHtml += `<span class="type-tag-badge cloze">${types.cloze} Cloze</span>`;
+      if (types.cloze) {
+        let clozeDetail = '';
+        if (types.clozeGuessAll || types.clozeContext) {
+          const parts = [];
+          if (types.clozeGuessOne) parts.push(`${types.clozeGuessOne} Guess One`);
+          if (types.clozeGuessAll) parts.push(`${types.clozeGuessAll} Guess All`);
+          if (types.clozeContext) parts.push(`${types.clozeContext} Context`);
+          clozeDetail = ` (${parts.join(', ')})`;
+        }
+        badgesHtml += `<span class="type-tag-badge cloze">${types.cloze} Cloze${clozeDetail}</span>`;
+      }
       if (types.reversible) badgesHtml += `<span class="type-tag-badge reversible">${types.reversible} Reversible</span>`;
 
       if (parsed.detectedSeparators) {
@@ -721,21 +934,37 @@ export class ModalManager {
         warningsBox.classList.add('hidden');
       }
 
-      // Sample Cards Preview (First 3 cards)
+      // Sample Cards Preview (Show up to 4 preview cards with type badges)
       samplesWrapper.classList.remove('hidden');
-      const samples = parsed.cards.slice(0, 3);
-      samplesContent.innerHTML = samples.map((c, i) => `
+      const samples = parsed.cards.slice(0, 4);
+      samplesContent.innerHTML = samples.map((c, i) => {
+        let typeBadge = '';
+        if (c.type === CARD_TYPES.CLOZE) {
+          const modeLbl = c.clozeMode === OCCLUSION_MODES.HIDE_ALL_GUESS_ALL ? 'Guess All' : (c.clozeMode === OCCLUSION_MODES.HIDE_ONE_GUESS_ONE ? 'Context' : 'Guess One');
+          typeBadge = `<span class="type-tag-badge cloze" style="font-size:0.68rem; margin-left:auto;">Cloze (${modeLbl})</span>`;
+        } else if (c.type === CARD_TYPES.REVERSIBLE) {
+          typeBadge = `<span class="type-tag-badge reversible" style="font-size:0.68rem; margin-left:auto;">Reversible</span>`;
+        } else {
+          typeBadge = `<span class="type-tag-badge basic" style="font-size:0.68rem; margin-left:auto;">Basic</span>`;
+        }
+
+        return `
         <div class="sample-card-item">
+          <div style="display:flex; align-items:center; margin-bottom:0.35rem;">
+            <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted);">Card #${i + 1}</span>
+            ${typeBadge}
+          </div>
           <div class="sample-card-row">
             <span class="sample-card-lbl">Front:</span>
             <span class="sample-card-val" style="white-space: pre-wrap; word-break: break-word; max-height: 5em; overflow-y: auto;">${escapeHtml(c.front || c.clozeText)}</span>
           </div>
           <div class="sample-card-row">
             <span class="sample-card-lbl">Back:</span>
-            <span class="sample-card-val" style="white-space: pre-wrap; word-break: break-word; max-height: 5em; overflow-y: auto;">${escapeHtml(c.back || '[Cloze Deletion]')}</span>
+            <span class="sample-card-val" style="white-space: pre-wrap; word-break: break-word; max-height: 5em; overflow-y: auto;">${escapeHtml(c.back || (c.type === CARD_TYPES.CLOZE ? '—' : ''))}</span>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       btnTriggerImport.disabled = false;
       btnTriggerImport.textContent = `📥 Import ${parsed.cards.length} Cards Now`;
@@ -794,6 +1023,7 @@ export class ModalManager {
               hint: card.hint || '',
               type: card.type || CARD_TYPES.BASIC,
               clozeText: card.clozeText || (card.type === CARD_TYPES.CLOZE ? card.front : ''),
+              clozeMode: card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
               tags: Array.isArray(card.tags) && card.tags.length > 0 ? card.tags : ['imported']
             });
             await storage.saveCard(cardObj);
@@ -919,6 +1149,17 @@ export class ModalManager {
     if (selectCardSep) selectCardSep.value = 'auto';
     const selectFieldSep = this.ioModalEl.querySelector('#select-field-sep');
     if (selectFieldSep) selectFieldSep.value = 'auto';
+
+    const inputGizmo = this.ioModalEl.querySelector('#input-gizmo-url');
+    if (inputGizmo) inputGizmo.value = '';
+    const statusGizmo = this.ioModalEl.querySelector('#gizmo-fetch-status');
+    if (statusGizmo) {
+      statusGizmo.textContent = '';
+      statusGizmo.classList.add('hidden');
+    }
+
+    const tabImport = this.ioModalEl.querySelector('#tab-btn-import');
+    if (tabImport) tabImport.click();
 
     this.ioModalEl.classList.remove('hidden');
   }

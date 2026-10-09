@@ -11,6 +11,7 @@ import {
   getDailyReviewQueue,
   getEndlessQueue,
   getDateString,
+  DEFAULT_SRS_DATA,
   RATINGS, 
   CARD_STATES 
 } from '../srs.js';
@@ -224,9 +225,9 @@ export class StudyView {
     this.session.isFlipped = false;
     this.session.isHintRevealed = false;
 
-    // Reversible card: 50% chance to test front->back or back->front
+    // Reversible card: test forward or reverse based on review item
     if (currentCard.type === CARD_TYPES.REVERSIBLE) {
-      this.session.isReverseQuestion = Math.random() > 0.5;
+      this.session.isReverseQuestion = currentCard.isReverse === true;
     } else {
       this.session.isReverseQuestion = false;
     }
@@ -458,7 +459,7 @@ export class StudyView {
       return `
         <div class="cloze-answer-box">
           <p class="study-text cloze-text">${revealed}</p>
-          ${card.back ? `<div class="cloze-extra-notes">${escapeHtml(card.back)}</div>` : ''}
+          ${card.back && card.back !== '[Cloze Deletion]' ? `<div class="cloze-extra-notes">${escapeHtml(card.back)}</div>` : ''}
         </div>
       `;
     }
@@ -582,12 +583,27 @@ export class StudyView {
           dueDate: allDueDates[0]
         };
       }
+    } else if (currentItem.isReverse !== undefined && parentCard.type === CARD_TYPES.REVERSIBLE) {
+      const sideKey = currentItem.isReverse ? 'rev' : 'fwd';
+      parentCard.reversibleSrs = parentCard.reversibleSrs || {};
+      parentCard.reversibleSrs[sideKey] = newSrs;
+
+      const fwd = parentCard.reversibleSrs.fwd || parentCard.srs || DEFAULT_SRS_DATA;
+      const rev = parentCard.reversibleSrs.rev || DEFAULT_SRS_DATA;
+      const allDueDates = [fwd.dueDate, rev.dueDate].filter(Boolean);
+      allDueDates.sort();
+      parentCard.srs = {
+        ...(parentCard.srs || {}),
+        state: (fwd.state === 'review' && rev.state === 'review') ? 'review' : 'learning',
+        interval: Math.max(fwd.interval || 0, rev.interval || 0),
+        dueDate: allDueDates[0] || newSrs.dueDate
+      };
     } else {
       parentCard.srs = newSrs;
     }
 
     await storage.saveCard(parentCard);
-    await storage.logReview(parentCard.id, rating, oldSrs, newSrs);
+    await storage.logReview(parentCard.id, rating, oldSrs, newSrs, currentItem.reviewItemId || currentItem.id);
 
     // Track stats
     if (rating === RATINGS.AGAIN) {

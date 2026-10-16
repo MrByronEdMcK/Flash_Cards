@@ -204,23 +204,19 @@ export class ModalManager {
                 </button>
               </div>
 
-              <p class="io-description" style="margin-top: 10px;">
-                Import cards from <strong>Gizmo.ai</strong>, <strong>Quizlet</strong>, <strong>Anki</strong>, <strong>RemNote</strong>, <strong>Brainscape</strong>, <strong>Cram.com</strong>, <strong>Knowt</strong>, <strong>CSV/TSV</strong>, or a <strong>StudyCards Backup</strong>.
+              <p class="io-description" style="margin-top: 8px; margin-bottom: 8px;">
+                Easily import cards from <strong>Anki</strong> (.apkg or notes), <strong>Gizmo.ai</strong>, <strong>Quizlet</strong>, or restore a <strong>StudyCards Backup</strong>.
               </p>
 
               <!-- Service Selector -->
-              <div class="form-group" style="margin-top: 12px;">
+              <div class="form-group" style="margin-top: 10px;">
                 <label class="form-label" for="select-import-service">1. Flashcard Source</label>
                 <select class="form-input" id="select-import-service">
                   <option value="auto">✨ Auto-Detect Format</option>
+                  <option value="anki-apkg">📦 Anki Deck Package (.apkg with Images &amp; Masks)</option>
+                  <option value="anki">🟢 Anki Notes (.txt / .tsv with Cloze)</option>
                   <option value="gizmo">⚡ Gizmo.ai (Share Link / Deck)</option>
                   <option value="quizlet">🔵 Quizlet (Text / TSV / CSV)</option>
-                  <option value="anki">🟢 Anki (Plain Text .txt / .tsv with Cloze)</option>
-                  <option value="remnote">🟣 RemNote (Markdown / Text .md / .txt)</option>
-                  <option value="brainscape">🟠 Brainscape (CSV)</option>
-                  <option value="cram">🟡 Cram.com (TSV / CSV)</option>
-                  <option value="knowt">🔴 Knowt (Text / CSV / JSON)</option>
-                  <option value="delimited">📄 Universal CSV / TSV</option>
                   <option value="studycards">🎴 StudyCards Backup (.json)</option>
                 </select>
                 <div id="import-service-guide" class="import-service-guide"></div>
@@ -240,7 +236,7 @@ export class ModalManager {
               </div>
 
               <!-- Input Method Switcher -->
-              <div class="form-group" style="margin-top: 12px;">
+              <div class="form-group" style="margin-top: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <label class="form-label" style="margin: 0;">2. Import Method</label>
                   <div class="import-method-toggle">
@@ -252,11 +248,11 @@ export class ModalManager {
                 <!-- File Dropzone -->
                 <div id="panel-import-file" class="import-panel">
                   <div class="import-dropzone" id="import-dropzone">
-                    <input type="file" id="input-import-file" accept=".apkg,.txt,.tsv,.csv,.json,.md,.tab" class="file-input-hidden"/>
+                    <input type="file" id="input-import-file" accept=".apkg,.txt,.tsv,.csv,.json" class="file-input-hidden"/>
                     <div class="upload-zone-content">
                       <span class="upload-icon">📄</span>
                       <span id="import-file-label" class="upload-label-main">Click or drag a flashcard file here</span>
-                      <span class="upload-label-sub">Accepts .apkg, .txt, .tsv, .csv, .json, .md files</span>
+                      <span id="import-file-sub" class="upload-label-sub">Accepts Anki (.apkg/.txt), Quizlet, Gizmo, and Backup (.json) files</span>
                     </div>
                   </div>
                 </div>
@@ -266,8 +262,8 @@ export class ModalManager {
                   <textarea class="form-input form-textarea font-mono" id="textarea-import-paste" rows="4" placeholder="Paste your exported flashcard text here...&#10;Example:&#10;Mitochondria&#9;The powerhouse of the cell&#10;Chloroplast&#9;Site of photosynthesis in plants"></textarea>
                 </div>
 
-                <!-- Delimiter / Separator Options (Quizlet, CSV, Text) -->
-                <div id="group-delimiter-options" class="delimiter-options-card">
+                <!-- Delimiter / Separator Options (Shown for Quizlet) -->
+                <div id="group-delimiter-options" class="delimiter-options-card hidden">
                   <div class="delimiter-options-title">
                     <span>⚙️ Delimiter Options (Quizlet / Delimited Text)</span>
                   </div>
@@ -551,6 +547,7 @@ export class ModalManager {
     const dropzone = el.querySelector('#import-dropzone');
     const fileInput = el.querySelector('#input-import-file');
     const fileLabel = el.querySelector('#import-file-label');
+    const fileSub = el.querySelector('#import-file-sub');
     const textareaPaste = el.querySelector('#textarea-import-paste');
     const destRadioNew = el.querySelector('input[name="destChoice"][value="new"]');
     const destRadioExisting = el.querySelector('input[name="destChoice"][value="existing"]');
@@ -659,13 +656,15 @@ export class ModalManager {
 
     // Service Guide updates
     const updateServiceGuide = (serviceKey) => {
+      // Delimiter options only relevant for Quizlet
       if (groupDelimiterOptions) {
-        if (serviceKey === 'studycards' || serviceKey === 'gizmo') {
-          groupDelimiterOptions.classList.add('hidden');
-        } else {
+        if (serviceKey === 'quizlet') {
           groupDelimiterOptions.classList.remove('hidden');
+        } else {
+          groupDelimiterOptions.classList.add('hidden');
         }
       }
+      // Gizmo share link input only relevant for Gizmo
       if (panelGizmo) {
         if (serviceKey === 'gizmo') {
           panelGizmo.classList.remove('hidden');
@@ -673,12 +672,49 @@ export class ModalManager {
           panelGizmo.classList.add('hidden');
         }
       }
+
+      // Update dropzone accept types & helper text per service
+      if (serviceKey === 'anki-apkg') {
+        fileInput.accept = '.apkg';
+        if (currentInputMode === 'paste') {
+          btnModeFile.click();
+        }
+        if (!currentFileName) {
+          fileLabel.textContent = 'Click or drag your Anki .apkg deck file here';
+          if (fileSub) fileSub.textContent = 'Supports .apkg deck packages with diagrams, images & occlusion masks';
+        }
+      } else if (serviceKey === 'anki') {
+        fileInput.accept = '.txt,.tsv,.csv';
+        if (!currentFileName) {
+          fileLabel.textContent = 'Click or drag your Anki .txt notes file here';
+          if (fileSub) fileSub.textContent = 'Supports Plain Text notes with HTML & cloze deletion tags';
+        }
+      } else if (serviceKey === 'quizlet') {
+        fileInput.accept = '.txt,.tsv,.csv';
+        if (!currentFileName) {
+          fileLabel.textContent = 'Click or drag a Quizlet export file here';
+          if (fileSub) fileSub.textContent = 'Supports Quizlet text, TSV, and CSV export files';
+        }
+      } else if (serviceKey === 'studycards') {
+        fileInput.accept = '.json';
+        if (!currentFileName) {
+          fileLabel.textContent = 'Click or drag a StudyCards .json backup file here';
+          if (fileSub) fileSub.textContent = 'Restores decks, card types, diagrams, and occlusion masks';
+        }
+      } else {
+        fileInput.accept = '.apkg,.txt,.tsv,.csv,.json';
+        if (!currentFileName) {
+          fileLabel.textContent = 'Click or drag a flashcard file here';
+          if (fileSub) fileSub.textContent = 'Accepts Anki (.apkg/.txt), Quizlet, Gizmo, and Backup (.json) files';
+        }
+      }
+
       const s = IMPORT_SERVICES[serviceKey];
       if (s && s.instructions) {
         guideBox.innerHTML = `<strong>How to import from ${escapeHtml(s.name)}:</strong><br/>${escapeHtml(s.instructions)}`;
         guideBox.classList.remove('hidden');
       } else if (serviceKey === 'auto') {
-        guideBox.innerHTML = `⚡ <strong>Auto-Detect:</strong> StudyCards will automatically identify format signatures from Gizmo.ai, Quizlet, Anki, RemNote, Brainscape, Cram, Knowt, CSV/TSV, and StudyCards JSON.`;
+        guideBox.innerHTML = `⚡ <strong>Auto-Detect:</strong> StudyCards will automatically identify format signatures from Anki (.apkg & .txt), Gizmo.ai, Quizlet, and StudyCards JSON backups.`;
         guideBox.classList.remove('hidden');
       } else {
         guideBox.classList.add('hidden');
@@ -772,8 +808,8 @@ export class ModalManager {
       }
 
       if (isApkg) {
-        selectService.value = 'anki';
-        updateServiceGuide('anki');
+        selectService.value = 'anki-apkg';
+        updateServiceGuide('anki-apkg');
 
         previewTitle.innerHTML = `<span>⏳</span> <span>Converting Anki package (extracting images & occlusion masks)...</span>`;
         previewBadges.innerHTML = `<span class="type-tag-badge basic">Extracting Deck...</span>`;

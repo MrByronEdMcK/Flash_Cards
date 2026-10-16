@@ -13,8 +13,8 @@ import { ModalManager } from './ui/modal.js';
 class FlashcardApp {
   constructor() {
     this.currentView = 'dashboard';
-    this.viewOptions = {};
     this.mainContainer = document.getElementById('app-main');
+    this.storage = storage;
     this.treeView = null;
     this.studyView = null;
     this.cardEditor = null;

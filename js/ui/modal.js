@@ -811,50 +811,70 @@ export class ModalManager {
         selectService.value = 'anki-apkg';
         updateServiceGuide('anki-apkg');
 
-        previewTitle.innerHTML = `<span>⏳</span> <span>Converting Anki package (extracting images & occlusion masks)...</span>`;
-        previewBadges.innerHTML = `<span class="type-tag-badge basic">Extracting Deck...</span>`;
+        groupDestPicker.classList.add('hidden');
+        groupNativeBackup.classList.remove('hidden');
+        previewBox.classList.remove('hidden');
+        previewTitle.innerHTML = `<span>⏳</span> <span>Reading Anki package (.apkg)...</span>`;
+        previewBadges.innerHTML = `<span class="type-tag-badge basic">Initializing WebAssembly...</span>`;
         warningsBox.classList.add('hidden');
         samplesWrapper.classList.add('hidden');
         btnTriggerImport.disabled = true;
         btnTriggerImport.textContent = '⏳ Processing .apkg...';
 
-        fetch('/api/import-apkg', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: file
-        })
-          .then((res) => {
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
+        // 100% Native In-Browser Extraction with WebAssembly SQLite & JSZip
+        import('../ankiPackageImporter.js')
+          .then(({ parseAnkiPackageNative }) => {
+            return parseAnkiPackageNative(file, (msg, pct) => {
+              previewTitle.innerHTML = `<span>⏳</span> <span>${escapeHtml(msg)} (${pct}%)</span>`;
+              btnTriggerImport.textContent = `⏳ Processing (${pct}%)...`;
+            });
           })
-          .then((res) => {
-            if (res && res.success && res.data) {
-              currentParsed = parseStudyCardsJson(JSON.stringify(res.data));
-              renderPreview(currentParsed);
-            } else {
-              throw new Error(res?.error || 'Conversion failed');
-            }
+          .then((parsedResult) => {
+            const types = {};
+            parsedResult.cards.forEach(c => {
+              types[c.type] = (types[c.type] || 0) + 1;
+            });
+
+            currentParsed = {
+              serviceId: 'anki-apkg',
+              isNativeBackup: true,
+              success: true,
+              deckName: parsedResult.groups?.[0]?.name || stem || 'Anki Deck',
+              cards: parsedResult.cards,
+              groups: parsedResult.groups,
+              totalParsed: parsedResult.cards.length,
+              validCards: parsedResult.cards,
+              nativeData: {
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                groups: parsedResult.groups,
+                cards: parsedResult.cards
+              },
+              stats: {
+                totalRows: parsedResult.cards.length,
+                validCards: parsedResult.cards.length,
+                skippedCount: 0,
+                groupsCount: parsedResult.groups.length,
+                cardTypes: types
+              },
+              warnings: [],
+              skipped: []
+            };
+            runParseAndPreview(true);
           })
           .catch((err) => {
-            console.warn('APKG conversion via local server failed:', err);
-            groupDestPicker.classList.add('hidden');
-            groupNativeBackup.classList.remove('hidden');
-            previewTitle.innerHTML = `<span>⚠️</span> <span>Anki Package (.apkg): Manual Converter</span>`;
-            previewBadges.innerHTML = `<span class="type-tag-badge reversible">1-Click Tool Ready</span>`;
+            console.error('In-browser APKG extraction error:', err);
+            previewTitle.innerHTML = `<span>❌</span> <span>Failed to read Anki package</span>`;
+            previewBadges.innerHTML = `<span class="type-tag-badge" style="background:#fee2e2;color:#991b1b;">Error</span>`;
             warningsBox.classList.remove('hidden');
             warningsText.innerHTML = `
               <div style="font-size:0.92rem; line-height:1.6;">
-                <strong>Automatic web server conversion unavailable.</strong><br>
-                To import <strong>${baseName}</strong> with all images and occlusion masks:
-                <ol style="margin: 0.5rem 0 0 1.25rem; padding: 0;">
-                  <li>Run <strong>scratch/Convert Anki Deck.bat</strong> to convert the package to JSON.</li>
-                  <li>Then select the generated <strong>${stem}_StudyCards.json</strong> file here.</li>
-                  <li>Or run <strong>scratch/Run App.bat</strong> to enable automatic 1-click conversion!</li>
-                </ol>
+                <strong>Could not read Anki package.</strong><br>
+                <span>${escapeHtml(err.message || 'The .apkg file appears corrupted or invalid.')}</span>
               </div>
             `;
             btnTriggerImport.disabled = true;
-            btnTriggerImport.textContent = '⚡ Run scratch/Convert Anki Deck.bat';
+            btnTriggerImport.textContent = 'Import Failed';
           });
         return;
       }
@@ -1092,7 +1112,7 @@ export class ModalManager {
           digestStatSource.textContent = 'Backup';
           digestStatSkipped.textContent = '0';
           digestWarningsBlock.classList.add('hidden');
-          lastImportedGroupId = null;
+          lastImportedGroupId = (currentParsed.groups && currentParsed.groups.length > 0) ? currentParsed.groups[0].id : null;
         } else {
           // Flashcards import (Quizlet, Anki, RemNote, etc.)
           let targetGroupId = null;

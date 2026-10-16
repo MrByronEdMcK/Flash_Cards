@@ -4,7 +4,7 @@
  * and background asset updates via GitHub.
  */
 
-const CACHE_NAME = 'studycards-v23';
+const CACHE_NAME = 'studycards-v24';
 
 const STATIC_ASSETS = [
   './',
@@ -20,6 +20,11 @@ const STATIC_ASSETS = [
   './js/srs.js',
   './js/generalKnowledgeData.js',
   './js/importers.js',
+  './js/ankiPackageImporter.js',
+  './js/lib/jszip.min.js',
+  './js/lib/fzstd.min.js',
+  './js/lib/sql-wasm.js',
+  './js/lib/sql-wasm.wasm',
   './js/occlusionCanvas.js',
   './js/ui/dashboardView.js',
   './js/ui/studyView.js',

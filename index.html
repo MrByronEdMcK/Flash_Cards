@@ -87,5 +87,50 @@
 
   <!-- Application Script -->
   <script type="module" src="js/app.js"></script>
+
+  <!-- Fallback guidance if opened directly via file:// instead of a web server -->
+  <script>
+    if (window.location.protocol === 'file:') {
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          const appMain = document.getElementById('app-main');
+          if (appMain && !appMain.children.length) {
+            const warningEl = document.createElement('div');
+            warningEl.style.cssText = 'max-width: 640px; margin: 3.5rem auto; padding: 2rem; background: var(--bg-surface, #ffffff); border: 2px solid var(--primary, #c05638); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.12); font-family: inherit; color: var(--text-main, #2d3748); line-height: 1.6;';
+            warningEl.innerHTML = `
+              <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+                <span style="font-size:2rem;">⚠️</span>
+                <h2 style="margin:0; font-size:1.4rem; color:var(--primary, #c05638);">Local Web Server Required</h2>
+              </div>
+              <p style="margin-bottom:1rem; font-size:0.95rem;">
+                This app uses modern JavaScript ES Modules, IndexedDB storage, and Service Workers. Web browsers block ES modules when opened directly from a local folder (<code>file:///</code>) due to CORS security rules.
+              </p>
+              <div style="background:var(--bg-subtle, #f8f9fa); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:1.1rem; margin-bottom:1.25rem;">
+                <div style="font-weight:600; margin-bottom:0.6rem;">⚡ How to run locally:</div>
+                <ol style="margin:0; padding-left:1.25rem; font-size:0.92rem;">
+                  <li style="margin-bottom:0.6rem;">
+                    <strong>Double-click <code>scratch/Run App.bat</code></strong> (or run a local web server).
+                  </li>
+                  <li style="margin-bottom:0.6rem;">
+                    Or run this in terminal / PowerShell:
+                    <div style="background:#1a202c; color:#63b3ed; padding:0.45rem 0.75rem; border-radius:6px; font-family:monospace; margin-top:0.35rem; font-size:0.88rem;">
+                      python -m http.server 8000
+                    </div>
+                  </li>
+                  <li>
+                    Then open <a href="http://localhost:8000" style="color:var(--primary, #c05638); font-weight:600;" target="_blank">http://localhost:8000</a> in your browser.
+                  </li>
+                </ol>
+              </div>
+              <p style="font-size:0.85rem; color:var(--text-muted, #718096); margin:0;">
+                ℹ️ <em>Once pushed to GitHub Pages or hosted online (<code>https://</code>), this error does not appear and the app works automatically.</em>
+              </p>
+            `;
+            appMain.appendChild(warningEl);
+          }
+        }, 150);
+      });
+    }
+  </script>
 </body>
 </html>

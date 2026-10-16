@@ -252,11 +252,11 @@ export class ModalManager {
                 <!-- File Dropzone -->
                 <div id="panel-import-file" class="import-panel">
                   <div class="import-dropzone" id="import-dropzone">
-                    <input type="file" id="input-import-file" accept=".txt,.tsv,.csv,.json,.md,.tab" class="file-input-hidden"/>
+                    <input type="file" id="input-import-file" accept=".apkg,.txt,.tsv,.csv,.json,.md,.tab" class="file-input-hidden"/>
                     <div class="upload-zone-content">
                       <span class="upload-icon">📄</span>
                       <span id="import-file-label" class="upload-label-main">Click or drag a flashcard file here</span>
-                      <span class="upload-label-sub">Accepts .txt, .tsv, .csv, .json, .md files</span>
+                      <span class="upload-label-sub">Accepts .apkg, .txt, .tsv, .csv, .json, .md files</span>
                     </div>
                   </div>
                 </div>
@@ -448,7 +448,7 @@ export class ModalManager {
           <!-- Export Tab -->
           <div id="io-section-export" class="io-section hidden">
             <p class="io-description">
-              Download your cards and hierarchical folders into a single backup file to save on your Google Drive or share with classmates.
+              Download your cards and hierarchical folders into a single self-contained backup file. <strong>Preserves all card types</strong>—including Image Occlusion diagrams with masks, Cloze deletions, Reversible cards, and embedded images—so you or your classmates can import and study them on any device.
             </p>
 
             <div class="backup-tip-banner" style="background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin: 12px 0; font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: flex-start; gap: 0.6rem;">
@@ -757,13 +757,70 @@ export class ModalManager {
     const handleSelectedFile = (file) => {
       currentFileName = file.name;
       const baseName = (file.name || '').split(/[\\/]/).pop() || '';
-      fileLabel.textContent = `Selected: ${baseName} (${Math.round(file.size / 1024 * 10) / 10} KB)`;
+      const isApkg = baseName.toLowerCase().endsWith('.apkg');
+      
+      const sizeStr = isApkg
+        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+        : `${Math.round(file.size / 1024 * 10) / 10} KB`;
+      fileLabel.textContent = `Selected: ${baseName} (${sizeStr})`;
 
       // Pre-fill deck name cleanly (strip extension and path)
       const stem = baseName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ').trim();
       if (stem && (!inputDeckName.value || inputDeckName.dataset.autoFilled)) {
         inputDeckName.value = stem.charAt(0).toUpperCase() + stem.slice(1);
         inputDeckName.dataset.autoFilled = 'true';
+      }
+
+      if (isApkg) {
+        selectService.value = 'anki';
+        updateServiceGuide('anki');
+
+        previewTitle.innerHTML = `<span>⏳</span> <span>Converting Anki package (extracting images & occlusion masks)...</span>`;
+        previewBadges.innerHTML = `<span class="type-tag-badge basic">Extracting Deck...</span>`;
+        warningsBox.classList.add('hidden');
+        samplesWrapper.classList.add('hidden');
+        btnTriggerImport.disabled = true;
+        btnTriggerImport.textContent = '⏳ Processing .apkg...';
+
+        fetch('/api/import-apkg', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
+          .then((res) => {
+            if (res && res.success && res.data) {
+              currentParsed = parseStudyCardsJson(JSON.stringify(res.data));
+              renderPreview(currentParsed);
+            } else {
+              throw new Error(res?.error || 'Conversion failed');
+            }
+          })
+          .catch((err) => {
+            console.warn('APKG conversion via local server failed:', err);
+            groupDestPicker.classList.add('hidden');
+            groupNativeBackup.classList.remove('hidden');
+            previewTitle.innerHTML = `<span>⚠️</span> <span>Anki Package (.apkg): Manual Converter</span>`;
+            previewBadges.innerHTML = `<span class="type-tag-badge reversible">1-Click Tool Ready</span>`;
+            warningsBox.classList.remove('hidden');
+            warningsText.innerHTML = `
+              <div style="font-size:0.92rem; line-height:1.6;">
+                <strong>Automatic web server conversion unavailable.</strong><br>
+                To import <strong>${baseName}</strong> with all images and occlusion masks:
+                <ol style="margin: 0.5rem 0 0 1.25rem; padding: 0;">
+                  <li>Run <strong>scratch/Convert Anki Deck.bat</strong> to convert the package to JSON.</li>
+                  <li>Then select the generated <strong>${stem}_StudyCards.json</strong> file here.</li>
+                  <li>Or run <strong>scratch/Run App.bat</strong> to enable automatic 1-click conversion!</li>
+                </ol>
+              </div>
+            `;
+            btnTriggerImport.disabled = true;
+            btnTriggerImport.textContent = '⚡ Run scratch/Convert Anki Deck.bat';
+          });
+        return;
       }
 
       const reader = new FileReader();
@@ -854,10 +911,20 @@ export class ModalManager {
         groupDestPicker.classList.add('hidden');
         groupNativeBackup.classList.remove('hidden');
 
-        previewTitle.innerHTML = `<span>✅</span> <span>Found StudyCards Backup: <strong>${parsed.stats.validCards} cards</strong> in <strong>${parsed.stats.groupsCount} folders</strong></span>`;
+        const types = parsed.stats.cardTypes || {};
+        const ioBadge = types.image_occlusion ? `<span class="type-tag-badge" style="background: rgba(192, 86, 56, 0.12); color: #c05638; border: 1px solid rgba(192, 86, 56, 0.25);">🖼️ ${types.image_occlusion} Image Occlusion</span>` : '';
+        const clozeBadge = types.cloze ? `<span class="type-tag-badge cloze">✏️ ${types.cloze} Cloze</span>` : '';
+        const revBadge = types.reversible ? `<span class="type-tag-badge reversible">🔄 ${types.reversible} Reversible</span>` : '';
+        const basicBadge = types.basic ? `<span class="type-tag-badge basic">📄 ${types.basic} Basic</span>` : '';
+
+        previewTitle.innerHTML = `<span>✅</span> <span>Found StudyCards Collection: <strong>${parsed.stats.validCards} cards</strong> in <strong>${parsed.stats.groupsCount} folders</strong></span>`;
         previewBadges.innerHTML = `
-          <span class="type-tag-badge basic">${parsed.stats.validCards} Cards</span>
+          <span class="type-tag-badge basic" style="font-weight: 700;">${parsed.stats.validCards} Cards</span>
           <span class="type-tag-badge reversible">${parsed.stats.groupsCount} Folders</span>
+          ${ioBadge}
+          ${clozeBadge}
+          ${revBadge}
+          ${basicBadge}
         `;
         warningsBox.classList.add('hidden');
         samplesWrapper.classList.add('hidden');
@@ -1024,6 +1091,10 @@ export class ModalManager {
               type: card.type || CARD_TYPES.BASIC,
               clozeText: card.clozeText || (card.type === CARD_TYPES.CLOZE ? card.front : ''),
               clozeMode: card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+              imageUrl: card.imageUrl || '',
+              imageOcclusions: Array.isArray(card.imageOcclusions) ? card.imageOcclusions : [],
+              occlusionMode: card.occlusionMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+              boxSrs: card.boxSrs || {},
               tags: Array.isArray(card.tags) && card.tags.length > 0 ? card.tags : ['imported']
             });
             await storage.saveCard(cardObj);

@@ -261,5 +261,6 @@ class FlashcardApp {
 document.addEventListener('DOMContentLoaded', () => {
   const app = new FlashcardApp();
   window.app = app;
+  window.StudyCardsApp = app;
   app.init();
 });

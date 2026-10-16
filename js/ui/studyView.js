@@ -35,7 +35,10 @@ export class StudyView {
     const settings = await storage.getSettings();
     const activeFocus = focusedGroupIds !== null ? focusedGroupIds : (settings.focusedGroupIds || []);
 
-    if (groupId) {
+    if (options.cards && options.cards.length > 0) {
+      allCards = options.cards;
+      groupName = options.title || 'Study Session';
+    } else if (groupId) {
       allCards = await storage.getCards(groupId, includeSubgroups);
       const g = await storage.getGroup(groupId);
       if (g) groupName = g.name;
@@ -76,7 +79,9 @@ export class StudyView {
     const reviewLogs = await storage.getReviewLogs();
     const todayStr = getDateString();
 
-    if (mode === 'daily') {
+    if (options.cards && options.cards.length > 0) {
+      sessionCards = allReviewItems;
+    } else if (mode === 'daily') {
       const dailyQueue = getDailyReviewQueue(allReviewItems, settings, reviewLogs, todayStr);
       sessionCards = dailyQueue.sessionCards;
     } else {
@@ -439,14 +444,14 @@ export class StudyView {
       return `
         <div class="text-card-prompt">
           <span class="reverse-badge">Reversed Prompt</span>
-          <p class="study-text">${escapeHtml(card.back)}</p>
+          <p class="study-text">${formatCardContent(card.back)}</p>
         </div>
       `;
     }
 
     return `
       <div class="text-card-prompt">
-        <p class="study-text">${escapeHtml(card.front)}</p>
+        <p class="study-text">${formatCardContent(card.front)}</p>
       </div>
     `;
   }
@@ -459,7 +464,7 @@ export class StudyView {
       return `
         <div class="cloze-answer-box">
           <p class="study-text cloze-text">${revealed}</p>
-          ${card.back && card.back !== '[Cloze Deletion]' ? `<div class="cloze-extra-notes">${escapeHtml(card.back)}</div>` : ''}
+          ${card.back && card.back !== '[Cloze Deletion]' ? `<div class="cloze-extra-notes">${formatCardContent(card.back)}</div>` : ''}
         </div>
       `;
     }
@@ -470,7 +475,7 @@ export class StudyView {
         <div class="occlusion-answer-wrapper">
           <h3 class="study-heading">${escapeHtml(card.front)}</h3>
           ${renderOcclusionStudyViewer(card, true, targetIndex)}
-          ${card.back ? `<p class="study-hint-note" style="margin-top: 6px;">${escapeHtml(card.back)}</p>` : ''}
+          ${card.back ? `<p class="study-hint-note" style="margin-top: 6px;">${formatCardContent(card.back)}</p>` : ''}
         </div>
       `;
     }
@@ -479,7 +484,7 @@ export class StudyView {
       return `
         <div class="image-card-answer">
           ${card.imageUrl ? `<img src="${card.imageUrl}" alt="Answer Image" class="study-image-media study-image-thumb"/>` : ''}
-          <div class="answer-text-highlight">${escapeHtml(card.back)}</div>
+          <div class="answer-text-highlight">${formatCardContent(card.back)}</div>
         </div>
       `;
     }
@@ -487,14 +492,14 @@ export class StudyView {
     if (card.type === CARD_TYPES.REVERSIBLE && this.session.isReverseQuestion) {
       return `
         <div class="text-card-answer">
-          <div class="answer-text-highlight">${escapeHtml(card.front)}</div>
+          <div class="answer-text-highlight">${formatCardContent(card.front)}</div>
         </div>
       `;
     }
 
     return `
       <div class="text-card-answer">
-        <div class="answer-text-highlight">${escapeHtml(card.back)}</div>
+        <div class="answer-text-highlight">${formatCardContent(card.back)}</div>
       </div>
     `;
   }
@@ -865,6 +870,18 @@ export class StudyView {
     };
     animate();
   }
+}
+
+function formatCardContent(str) {
+  if (!str) return '';
+  if (/<(img|b|i|u|strong|em|code|br|p|mark|span|ul|ol|li)\b/i.test(str)) {
+    return str
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/javascript:/gi, '');
+  }
+  return escapeHtml(str);
 }
 
 function escapeHtml(str) {

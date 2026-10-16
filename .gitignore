@@ -7,3 +7,6 @@ desktop.ini
 *.log
 dom.html
 scratch/
+__pycache__/
+*.pyc
+*.apkg

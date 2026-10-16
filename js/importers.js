@@ -44,9 +44,9 @@ export const IMPORT_SERVICES = {
     id: 'anki',
     name: 'Anki',
     icon: '🟢',
-    description: 'Supports Anki Notes in Plain Text (.txt, .tsv) with HTML formatting and Cloze deletions.',
-    instructions: 'In Anki, click File ➔ Export ➔ choose "Notes in Plain Text (*.txt)" and ensure "Include HTML" is checked.',
-    acceptedExts: '.txt,.tsv,.csv'
+    description: 'Supports Anki .apkg packages (with images & occlusion masks) as well as Plain Text (.txt, .tsv) notes.',
+    instructions: 'In Anki, export as Anki Deck Package (*.apkg) to preserve diagrams, images, and image occlusions, or choose "Notes in Plain Text (*.txt)" with "Include HTML" checked.',
+    acceptedExts: '.apkg,.txt,.tsv,.csv,.json'
   },
   remnote: {
     id: 'remnote',
@@ -301,28 +301,108 @@ export function parseDelimitedRows(text, delimiter = null) {
 }
 
 /**
+ * Decode standard, hexadecimal (&#x20;), and decimal HTML entities
+ */
+export function decodeHtmlEntities(str) {
+  if (!str) return '';
+  return str
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\u00a0/g, ' ');
+}
+
+/**
  * Clean & normalize HTML from Anki or web exports
  */
-function cleanHtml(html) {
+export function cleanHtml(html) {
   if (!html) return '';
-  let text = html
-    .replace(/<br\s*[\/]?>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<div>/gi, '')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<p>/gi, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+  let text = decodeHtmlEntities(html);
 
-  // Keep clean inline tags like <b>, <i>, <code>, <u>, <em>, <strong>
-  // Strip dangerous or layout tags
+  // Strip dangerous or non-content tags (scripts and styles)
   text = text.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+
+  // Strip Anki Image Occlusion wrappers
+  text = text.replace(/<div\b[^>]*?id=["']io-[^"']*["'][^>]*>/gi, '');
+  text = text.replace(/<br\s*[\/]?>/gi, '\n');
+  text = text.replace(/<\/div>/gi, '\n');
+  text = text.replace(/<div>/gi, '');
+  text = text.replace(/<\/p>/gi, '\n\n');
+  text = text.replace(/<p>/gi, '');
+
+  // Strip styling spans but keep inner text
+  text = text.replace(/<span\b[^>]*>/gi, '');
+  text = text.replace(/<\/span>/gi, '');
+
+  // Clean redundant whitespace and excessive newlines
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n{3,}/g, '\n\n');
   return text.trim();
+}
+
+/**
+ * Convert Anki HTML Cloze export format into StudyCards cloze syntax:
+ * Converts <span class="cloze" data-cloze="term" data-ordinal="1">[...]</span>
+ * into {{c1::term}} (or {{c1::term::hint}} if inner text has a hint).
+ * Unwraps <span class="cloze-inactive"> into regular text.
+ */
+export function convertAnkiHtmlCloze(frontHtml, backHtml = '') {
+  if (!frontHtml) return { clozeText: '', back: '' };
+
+  let workFront = frontHtml;
+
+  // 1. Replace active cloze spans
+  const activeRegex = /<span\b(?=[^>]*?\bclass=["']cloze["'])([^>]*)>(.*?)<\/span>/gi;
+  workFront = workFront.replace(activeRegex, (_, attrs, innerContent) => {
+    const ordMatch = attrs.match(/data-ordinal=["']?(\d+)["']?/i);
+    const ordinal = ordMatch ? ordMatch[1] : '1';
+
+    const clozeValMatch = attrs.match(/data-cloze=["']([^"']*)["']/i);
+    let clozeVal = clozeValMatch ? decodeHtmlEntities(clozeValMatch[1]) : decodeHtmlEntities(innerContent);
+
+    // Extract hint if inner content has custom hint brackets, e.g. [ hint text ]
+    let hint = '';
+    const trimmedInner = (innerContent || '').trim();
+    if (trimmedInner && trimmedInner !== '[...]' && trimmedInner !== '...' && trimmedInner !== '[]') {
+      let candidate = trimmedInner;
+      if (candidate.startsWith('[') && candidate.endsWith(']')) {
+        candidate = candidate.slice(1, -1).trim();
+      }
+      hint = decodeHtmlEntities(candidate);
+    }
+
+    if (hint) {
+      return `{{c${ordinal}::${clozeVal}::${hint}}}`;
+    }
+    return `{{c${ordinal}::${clozeVal}}}`;
+  });
+
+  // 2. Unwrap inactive cloze spans: <span class="cloze-inactive" ...>content</span> -> content
+  const inactiveRegex = /<span\b(?=[^>]*?\bclass=["']cloze-inactive["'])[^>]*>(.*?)<\/span>/gi;
+  workFront = workFront.replace(inactiveRegex, '$1');
+
+  // 3. Clean remaining HTML tags in front
+  const cleanFront = cleanHtml(workFront);
+
+  // 4. Process back extra notes
+  let cleanBack = '';
+  if (backHtml) {
+    let workBack = backHtml
+      .replace(activeRegex, '$2')
+      .replace(inactiveRegex, '$1');
+    cleanBack = cleanHtml(workBack);
+  }
+
+  return {
+    clozeText: cleanFront,
+    back: cleanBack
+  };
 }
 
 /**
@@ -475,8 +555,17 @@ export function autoDetectService(text, filename = '') {
     }
   }
 
-  // 3. Anki Comments
-  if (trimmed.startsWith('#separator:') || trimmed.startsWith('#html:') || trimmed.startsWith('#tags column:')) {
+  // 3. Anki Comments, APKG extension, or Anki HTML Signatures
+  if (
+    ext === 'apkg' ||
+    trimmed.startsWith('#separator:') ||
+    trimmed.startsWith('#html:') ||
+    trimmed.startsWith('#tags column:') ||
+    trimmed.includes('data-cloze=') ||
+    trimmed.includes('class="cloze"') ||
+    trimmed.includes('class=\'cloze\'') ||
+    trimmed.includes('io-wrapper')
+  ) {
     return 'anki';
   }
 
@@ -867,10 +956,57 @@ export function parseAnki(text) {
     const field1 = (row[0] || '').trim();
     const field2 = row.length > 1 ? (row[1] || '').trim() : '';
     const field3 = row.length > 2 ? (row[2] || '').trim() : '';
+    const rawTags = field3 ? field3.split(/\s+/).filter(Boolean) : ['anki'];
 
     if (!field1 && !field2) continue;
 
-    // Check for Anki Cloze in field 1
+    // 1. Anki Image Occlusion HTML (e.g. from Image Occlusion Enhanced note type)
+    if (field1.includes('io-wrapper') || field1.includes('io-overlay') || field1.includes('-ao-')) {
+      const headerMatch = field1.match(/<div\s+id=["']io-header["']>([\s\S]*?)<\/div>/i);
+      const footerMatch = field1.match(/<div\s+id=["']io-footer["']>([\s\S]*?)<\/div>/i);
+      const imgMatch = field1.match(/<div\s+id=["']io-original["'][^>]*>\s*<img[^>]*src=["']([^"']+)["']/i);
+
+      const headerText = headerMatch ? cleanHtml(headerMatch[1]) : '';
+      const footerText = footerMatch ? cleanHtml(footerMatch[1]) : '';
+      const origImg = imgMatch ? imgMatch[1] : '';
+
+      const frontTitle = headerText || (origImg ? `Identify diagram: ${origImg}` : 'Identify diagram labels');
+      const backNotes = [cleanHtml(field2), footerText].filter(Boolean).join('\n\n');
+
+      cards.push({
+        front: frontTitle,
+        back: backNotes,
+        hint: footerText,
+        tags: [...rawTags, 'anki-occlusion'],
+        type: CARD_TYPES.BASIC,
+        clozeText: '',
+        sourceLine: lineNum
+      });
+      continue;
+    }
+
+    // 2. Anki HTML Cloze Deletion (<span class="cloze" data-cloze="...">[...]</span>)
+    if (field1.includes('class="cloze"') || field1.includes('data-cloze=') || field1.includes("class='cloze'")) {
+      const { clozeText, back } = convertAnkiHtmlCloze(field1, field2);
+      if (clozeText) {
+        const plainSummary = clozeText.replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/g, '[...]').replace(/<[^>]+>/g, '').trim();
+        const frontLabel = 'Cloze: ' + plainSummary.slice(0, 45) + (plainSummary.length > 45 ? '...' : '');
+
+        cards.push({
+          front: frontLabel,
+          back: back,
+          hint: '',
+          tags: [...rawTags, 'anki-cloze'],
+          type: CARD_TYPES.CLOZE,
+          clozeText: clozeText,
+          clozeMode: OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+          sourceLine: lineNum
+        });
+        continue;
+      }
+    }
+
+    // 3. Standard Anki Cloze syntax {{c1::answer}}
     const clozeField1 = detectCloze(field1);
     if (clozeField1) {
       const analyzed = analyzeCardTypeAndContent(field1, field2);
@@ -878,7 +1014,7 @@ export function parseAnki(text) {
         front: cleanHtml(analyzed.front || field1),
         back: cleanHtml(analyzed.back || field2 || ''),
         hint: '',
-        tags: field3 ? field3.split(/\s+/).filter(Boolean) : ['anki'],
+        tags: [...rawTags, 'anki-cloze'],
         type: CARD_TYPES.CLOZE,
         clozeText: analyzed.clozeText || clozeField1,
         clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
@@ -887,7 +1023,7 @@ export function parseAnki(text) {
       continue;
     }
 
-    // Standard Basic Anki card
+    // 4. Standard Basic Anki card
     if (!field1) {
       warnings.push({ line: lineNum, reason: 'Missing question (Front is empty)', rawSnippet: field2.substring(0, 40) });
       continue;
@@ -901,7 +1037,7 @@ export function parseAnki(text) {
       front: cleanHtml(field1),
       back: cleanHtml(field2),
       hint: '',
-      tags: field3 ? field3.split(/\s+/).filter(Boolean) : ['anki'],
+      tags: rawTags,
       type: CARD_TYPES.BASIC,
       clozeText: '',
       sourceLine: lineNum

@@ -714,3 +714,18 @@ body.study-mode-active .app-main-viewport,
   gap: 0.75rem;
   width: 100%;
 }
+
+/* Embedded Media Images in Study Cards */
+.study-card img,
+.study-card-face img,
+.cloze-extra-notes img,
+.answer-text-highlight img,
+.study-text img {
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: var(--radius-md, 8px);
+  margin: 0.85rem auto;
+  display: block;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}

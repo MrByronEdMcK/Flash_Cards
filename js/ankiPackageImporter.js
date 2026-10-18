@@ -322,6 +322,31 @@ export async function parseAnkiPackageNative(fileInput, onProgress = null) {
     return result;
   }
 
+  async function extractImagesFromHtml(htmlText, defaultSide = 'back') {
+    if (!htmlText || typeof htmlText !== 'string' || !htmlText.includes('<img')) {
+      return { cleanText: cleanHtml(htmlText || ''), images: [] };
+    }
+    const matches = Array.from(htmlText.matchAll(/<img\s+[^>]*?src=["']([^"']+)["'][^>]*>/gi));
+    const images = [];
+    let cleanText = htmlText;
+    for (const m of matches) {
+      const fn = m[1].trim();
+      const uri = await getMediaDataUri(fn);
+      if (uri) {
+        const altMatch = m[0].match(/alt=["']([^"']+)["']/i);
+        const name = altMatch ? altMatch[1] : (fn || `Image Attachment ${images.length + 1}`);
+        images.push({
+          id: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          url: uri,
+          side: defaultSide,
+          name: name
+        });
+      }
+      cleanText = cleanText.replace(m[0], '');
+    }
+    return { cleanText: cleanHtml(cleanText), images };
+  }
+
   // 3. Initialize WebAssembly SQLite database
   onProgress?.('Querying database in WebAssembly...', 60);
   const SQL = await window.initSqlJs({
@@ -496,13 +521,14 @@ export async function parseAnkiPackageNative(fileInput, onProgress = null) {
       const backExtraField = fldDict['Back Extra'] || fldValues[1] || '';
 
       const { clozeText: convertedCloze, back: clozeBack } = convertAnkiHtmlCloze(textField, backExtraField);
-      let clozeText = convertedCloze || cleanHtml(textField);
-      let backExtra = clozeBack ? cleanHtml(clozeBack) : cleanHtml(backExtraField);
+      const rawCloze = convertedCloze || textField;
+      const rawBack = clozeBack || backExtraField;
 
-      clozeText = await replaceImgTagsWithDataUri(clozeText);
-      backExtra = await replaceImgTagsWithDataUri(backExtra);
+      const clozeImgRes = await extractImagesFromHtml(rawCloze, 'front');
+      const backImgRes = await extractImagesFromHtml(rawBack, 'back');
+      const cardImages = [...clozeImgRes.images, ...backImgRes.images];
 
-      const plainSummary = clozeText.replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/g, '[...]').replace(/<[^>]+>/g, '').trim();
+      const plainSummary = clozeImgRes.cleanText.replace(/\{\{c\d+::(.*?)(?:::.*?)?\}\}/g, '[...]').replace(/<[^>]+>/g, '').trim();
       const frontLabel = `Cloze: ${plainSummary.slice(0, 45)}${plainSummary.length > 45 ? '...' : ''}`;
 
       cards.push({
@@ -510,9 +536,12 @@ export async function parseAnkiPackageNative(fileInput, onProgress = null) {
         groupId: groupId,
         type: 'cloze',
         front: frontLabel,
-        back: backExtra,
-        clozeText: clozeText,
+        back: backImgRes.cleanText,
+        clozeText: clozeImgRes.cleanText,
         clozeMode: 'hide_all_guess_one',
+        imageUrl: cardImages[0]?.url || '',
+        images: cardImages,
+        imageSide: cardImages[0]?.side || 'back',
         tags: [...tags, 'anki-cloze'],
         srs: {
           interval: 0,
@@ -523,25 +552,28 @@ export async function parseAnkiPackageNative(fileInput, onProgress = null) {
       });
       clozeCount++;
     }
-    // C. Basic Note
+    // C. Basic Note (or converted to Image card if images exist)
     else {
       const frontField = fldDict['Front'] || fldValues[0] || '';
       const backField = fldDict['Back'] || fldValues[1] || '';
 
-      let frontClean = cleanHtml(frontField);
-      let backClean = cleanHtml(backField);
-
-      frontClean = await replaceImgTagsWithDataUri(frontClean);
-      backClean = await replaceImgTagsWithDataUri(backClean);
+      const frontImgRes = await extractImagesFromHtml(frontField, 'front');
+      const backImgRes = await extractImagesFromHtml(backField, 'back');
+      const cardImages = [...frontImgRes.images, ...backImgRes.images];
+      const hasImages = cardImages.length > 0;
+      const cardType = hasImages ? 'image' : 'basic';
 
       cards.push({
         id: `card_basic_${nid}`,
         groupId: groupId,
-        type: 'basic',
-        front: frontClean,
-        back: backClean,
+        type: cardType,
+        front: frontImgRes.cleanText || (hasImages ? 'Attached Diagram / Question' : 'Flashcard'),
+        back: backImgRes.cleanText,
         hint: '',
-        tags: [...tags, 'anki'],
+        imageUrl: cardImages[0]?.url || '',
+        images: cardImages,
+        imageSide: cardImages[0]?.side || 'back',
+        tags: [...tags, 'anki', ...(hasImages ? ['image'] : [])],
         srs: {
           interval: 0,
           easeFactor: 2.5,

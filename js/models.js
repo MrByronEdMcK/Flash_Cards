@@ -35,7 +35,14 @@ export function generateId(prefix = 'id') {
 
 export function createCard(data = {}) {
   const now = new Date().toISOString();
-  return {
+  const rawImages = Array.isArray(data.images) ? data.images : (data.imageUrl ? [{
+    id: generateId('img'),
+    url: data.imageUrl,
+    side: data.imageSide || 'back',
+    name: 'Image Attachment 1'
+  }] : []);
+
+  const card = {
     id: data.id || generateId('card'),
     groupId: data.groupId || null,
     type: data.type || CARD_TYPES.BASIC,
@@ -45,7 +52,9 @@ export function createCard(data = {}) {
     clozeText: data.clozeText || '',
     clozeMode: data.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
     clozeSrs: data.clozeSrs ? { ...data.clozeSrs } : {},
-    imageUrl: data.imageUrl || '',
+    imageUrl: data.imageUrl || (rawImages[0]?.url || ''),
+    images: rawImages,
+    imageSide: data.imageSide || (rawImages[0]?.side || 'back'),
     imageOcclusions: Array.isArray(data.imageOcclusions) ? data.imageOcclusions : [],
     occlusionMode: data.occlusionMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
     boxSrs: data.boxSrs ? { ...data.boxSrs } : {},
@@ -57,6 +66,93 @@ export function createCard(data = {}) {
     createdAt: data.createdAt || now,
     updatedAt: now
   };
+
+  return sanitizeCardImages(card);
+}
+
+/**
+ * Sanitizes a card by extracting raw <img> tags out of front/back text fields
+ * into clean attachment objects in card.images, leaving only actual text.
+ * Converts basic cards with images to 'image' type cards.
+ */
+export function sanitizeCardImages(card) {
+  if (!card) return card;
+  const images = Array.isArray(card.images) ? [...card.images] : [];
+
+  const extractImagesFromHtml = (htmlStr, defaultSide) => {
+    if (!htmlStr || typeof htmlStr !== 'string') return { cleanText: '', extracted: [] };
+    const extracted = [];
+    // Match <img ... src="..." ...> or self-closing <img ... />
+    const cleanText = htmlStr.replace(/<img\b[^>]*src=["']([^"']+)["'][^>]*>/gi, (match, src) => {
+      const altMatch = match.match(/alt=["']([^"']+)["']/i);
+      const name = altMatch ? altMatch[1] : `Image Attachment ${images.length + extracted.length + 1}`;
+      extracted.push({
+        id: generateId('img'),
+        url: src,
+        side: defaultSide,
+        name: name
+      });
+      return '';
+    }).replace(/<p>\s*<\/p>/gi, '').replace(/(?:<br\s*\/?>\s*)+$/gi, '').trim();
+
+    return { cleanText, extracted };
+  };
+
+  const frontRes = extractImagesFromHtml(card.front, 'front');
+  const backRes = extractImagesFromHtml(card.back, 'back');
+
+  if (frontRes.extracted.length > 0 || backRes.extracted.length > 0) {
+    images.push(...frontRes.extracted, ...backRes.extracted);
+    card.front = frontRes.cleanText;
+    card.back = backRes.cleanText;
+  }
+
+  // Also extract from clozeText if present
+  if (card.clozeText) {
+    const clozeRes = extractImagesFromHtml(card.clozeText, 'front');
+    if (clozeRes.extracted.length > 0) {
+      images.push(...clozeRes.extracted);
+      card.clozeText = clozeRes.cleanText;
+    }
+  }
+
+  // If card has imageUrl but empty images array, populate it
+  if (card.imageUrl && images.length === 0) {
+    images.push({
+      id: generateId('img'),
+      url: card.imageUrl,
+      side: card.imageSide || 'back',
+      name: 'Image Attachment 1'
+    });
+  }
+
+  if (images.length > 0) {
+    card.images = images;
+    card.imageUrl = images[0].url;
+    card.imageSide = images[0].side || 'back';
+    // If it was a basic card with an image, convert to 'image' card type
+    if (card.type === CARD_TYPES.BASIC) {
+      card.type = CARD_TYPES.IMAGE;
+    }
+  } else {
+    card.images = [];
+  }
+
+  return card;
+}
+
+/**
+ * Remove HTML tags, image tags, and entity spaces to return clean human-readable card text.
+ * @param {string} str
+ * @returns {string}
+ */
+export function cleanCardText(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/<img\b[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
 }
 
 /**
@@ -124,7 +220,7 @@ export function renderClozeText(rawText, isRevealed = false, targetNum = 1, mode
   });
 }
 
-function escapeHtml(str) {
+export function escapeHtml(str) {
   if (!str) return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

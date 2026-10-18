@@ -17,6 +17,7 @@ import {
 } from '../srs.js';
 import { CARD_TYPES, OCCLUSION_MODES, getReviewItemsForCard, renderClozeText, getClozeNumbers } from '../models.js';
 import { renderOcclusionStudyViewer } from '../occlusionCanvas.js';
+import { openImageLightbox } from './treeView.js';
 
 export class StudyView {
   constructor(container, navigateTo) {
@@ -365,6 +366,15 @@ export class StudyView {
       });
     }
 
+    // Image click to zoom / lightbox
+    this.container.querySelectorAll('.preview-zoomable, .study-image-media').forEach(imgEl => {
+      imgEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const url = imgEl.dataset.imgUrl || imgEl.src;
+        if (url) openImageLightbox(url, 'Flashcard Image');
+      });
+    });
+
     if (this.session.isFlipped) {
       this._wireFlippedActionButtons();
     }
@@ -432,10 +442,19 @@ export class StudyView {
     }
 
     if (card.type === CARD_TYPES.IMAGE) {
+      const frontImgs = getCardFrontImages(card);
       return `
         <div class="image-card-prompt">
-          <h3 class="study-heading">${escapeHtml(card.front)}</h3>
-          ${card.imageUrl ? `<img src="${card.imageUrl}" alt="Question Image" class="study-image-media"/>` : ''}
+          ${card.front ? `<h3 class="study-heading">${formatCardContent(card.front)}</h3>` : ''}
+          ${frontImgs.length > 0 ? `
+            <div class="study-images-group">
+              ${frontImgs.map(img => `
+                <div class="study-image-wrap">
+                  <img src="${img.url}" alt="${escapeHtml(img.name || 'Question Image')}" class="study-image-media preview-zoomable" data-img-url="${img.url}" title="Click to view full size"/>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
         </div>
       `;
     }
@@ -449,9 +468,19 @@ export class StudyView {
       `;
     }
 
+    const defaultFrontImgs = getCardFrontImages(card);
     return `
       <div class="text-card-prompt">
         <p class="study-text">${formatCardContent(card.front)}</p>
+        ${defaultFrontImgs.length > 0 ? `
+          <div class="study-images-group">
+            ${defaultFrontImgs.map(img => `
+              <div class="study-image-wrap">
+                <img src="${img.url}" alt="${escapeHtml(img.name || 'Question Image')}" class="study-image-media preview-zoomable" data-img-url="${img.url}" title="Click to view full size"/>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -481,10 +510,19 @@ export class StudyView {
     }
 
     if (card.type === CARD_TYPES.IMAGE) {
+      const backImgs = getCardBackImages(card);
       return `
         <div class="image-card-answer">
-          ${card.imageUrl ? `<img src="${card.imageUrl}" alt="Answer Image" class="study-image-media study-image-thumb"/>` : ''}
-          <div class="answer-text-highlight">${formatCardContent(card.back)}</div>
+          ${backImgs.length > 0 ? `
+            <div class="study-images-group">
+              ${backImgs.map(img => `
+                <div class="study-image-wrap">
+                  <img src="${img.url}" alt="${escapeHtml(img.name || 'Answer Image')}" class="study-image-media study-image-thumb preview-zoomable" data-img-url="${img.url}" title="Click to view full size"/>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+          ${card.back ? `<div class="answer-text-highlight">${formatCardContent(card.back)}</div>` : ''}
         </div>
       `;
     }
@@ -497,9 +535,19 @@ export class StudyView {
       `;
     }
 
+    const defaultBackImgs = getCardBackImages(card);
     return `
       <div class="text-card-answer">
         <div class="answer-text-highlight">${formatCardContent(card.back)}</div>
+        ${defaultBackImgs.length > 0 ? `
+          <div class="study-images-group">
+            ${defaultBackImgs.map(img => `
+              <div class="study-image-wrap">
+                <img src="${img.url}" alt="${escapeHtml(img.name || 'Answer Image')}" class="study-image-media study-image-thumb preview-zoomable" data-img-url="${img.url}" title="Click to view full size"/>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -872,16 +920,43 @@ export class StudyView {
   }
 }
 
+function getCardFrontImages(card) {
+  if (!card) return [];
+  if (Array.isArray(card.images) && card.images.length > 0) {
+    return card.images.filter(img => img.side === 'front');
+  }
+  if (card.imageUrl && card.imageSide === 'front') {
+    return [{ id: 'img_primary', url: card.imageUrl, name: 'Question Image', side: 'front' }];
+  }
+  if (card.type === CARD_TYPES.IMAGE && card.imageUrl && !card.imageSide) {
+    return [{ id: 'img_primary', url: card.imageUrl, name: 'Question Image', side: 'front' }];
+  }
+  return [];
+}
+
+function getCardBackImages(card) {
+  if (!card) return [];
+  if (Array.isArray(card.images) && card.images.length > 0) {
+    return card.images.filter(img => img.side !== 'front');
+  }
+  if (card.imageUrl && card.imageSide === 'back') {
+    return [{ id: 'img_primary', url: card.imageUrl, name: 'Answer Image', side: 'back' }];
+  }
+  return [];
+}
+
 function formatCardContent(str) {
   if (!str) return '';
-  if (/<(img|b|i|u|strong|em|code|br|p|mark|span|ul|ol|li)\b/i.test(str)) {
-    return str
+  // Strip raw <img> tags from content text so clean text is displayed
+  const cleaned = str.replace(/<img\b[^>]*>/gi, '').trim();
+  if (/<(b|i|u|strong|em|code|br|p|mark|span|ul|ol|li)\b/i.test(cleaned)) {
+    return cleaned
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
       .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
       .replace(/javascript:/gi, '');
   }
-  return escapeHtml(str);
+  return escapeHtml(cleaned);
 }
 
 function escapeHtml(str) {

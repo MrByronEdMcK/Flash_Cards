@@ -4,8 +4,9 @@
  */
 
 import { storage } from '../storage.js';
-import { CARD_TYPES, OCCLUSION_MODES, GROUP_TYPES, createCard, createGroup, getClozeNumbers } from '../models.js';
+import { CARD_TYPES, OCCLUSION_MODES, GROUP_TYPES, createCard, createGroup, getClozeNumbers, sanitizeCardImages, cleanCardText, escapeHtml } from '../models.js';
 import { OcclusionEditor } from '../occlusionCanvas.js';
+import { openImageLightbox } from './treeView.js';
 
 export class CardEditorModal {
   constructor() {
@@ -14,6 +15,7 @@ export class CardEditorModal {
     this.occlusionEditor = null;
     this.activeType = CARD_TYPES.BASIC;
     this.cardsAddedCount = 0;
+    this.attachedImages = [];
     this._lastSelectedGroupId = null;
     this._feedbackTimeout = null;
     this._createDOM();
@@ -140,27 +142,44 @@ export class CardEditorModal {
               <div class="card-type-section hidden" id="section-image">
                 <div class="form-group">
                   <label class="form-label" for="input-image-front">Question / Prompt</label>
-                  <input type="text" class="form-input" id="input-image-front" placeholder="Identify this organelle or landmark"/>
+                  <textarea class="form-input form-textarea" id="input-image-front" rows="3" placeholder="e.g. Draw or identify the basic structure of an amino acid"></textarea>
                 </div>
 
-                <div class="form-group">
-                  <label class="form-label">Upload or Paste Image</label>
-                  <div class="image-upload-zone" id="image-upload-dropzone">
-                    <input type="file" id="input-image-file" accept="image/*" class="file-input-hidden"/>
+                <div class="form-group" style="margin-top: 10px; margin-bottom: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.45rem;">
+                    <label class="form-label" style="margin-bottom: 0; font-weight: 600;">
+                      🖼️ Attached Images
+                    </label>
+                    <span class="text-muted" style="font-size: 0.8rem; font-weight: 500;" id="image-attachments-count">
+                      0 images attached
+                    </span>
+                  </div>
+
+                  <!-- Email-recipient style chips container -->
+                  <div id="image-chips-container" class="image-chips-container">
+                    <span class="empty-chips-msg">No images attached yet. Add images below via browse, clipboard paste (Ctrl+V), or URL.</span>
+                  </div>
+
+                  <!-- Multi-image Upload Dropzone -->
+                  <div class="image-upload-zone" id="image-upload-dropzone" style="margin-top: 0.65rem;">
+                    <input type="file" id="input-image-file" accept="image/*" multiple class="file-input-hidden"/>
                     <div class="upload-zone-content">
                       <span class="upload-icon">📁</span>
-                      <span>Click to browse, or paste image (Ctrl+V)</span>
+                      <span>Click to attach image(s), or paste image directly (Ctrl+V)</span>
                     </div>
                   </div>
-                  <div class="image-url-row" style="margin-top: 8px;">
-                    <input type="url" class="form-input" id="input-image-url" placeholder="Or paste image URL (https://...)"/>
+
+                  <div class="image-url-row" style="margin-top: 8px; display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="url" class="form-input" id="input-image-url" placeholder="Or enter image URL (https://...)" style="flex: 1;"/>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-add-image-url" style="white-space: nowrap;">
+                      + Attach URL
+                    </button>
                   </div>
-                  <div id="image-preview-box" class="image-preview-container hidden"></div>
                 </div>
 
                 <div class="form-group">
                   <label class="form-label" for="input-image-back">Answer</label>
-                  <textarea class="form-input form-textarea" id="input-image-back" rows="2" placeholder="The correct answer"></textarea>
+                  <textarea class="form-input form-textarea" id="input-image-back" rows="3" placeholder="The correct answer or explanation"></textarea>
                 </div>
               </div>
 
@@ -425,33 +444,148 @@ export class CardEditorModal {
     secOcc.classList.toggle('hidden', type !== CARD_TYPES.IMAGE_OCCLUSION);
   }
 
-  _populateCardData(card) {
-    this.modalEl.querySelector('#input-card-front').value = card.front || '';
-    this.modalEl.querySelector('#input-card-back').value = card.back || '';
-    this.modalEl.querySelector('#input-cloze-text').value = card.clozeText || card.front || '';
-    this.modalEl.querySelector('#input-cloze-extra').value = card.back || '';
-    this.modalEl.querySelector('#input-image-front').value = card.front || '';
-    this.modalEl.querySelector('#input-image-back').value = card.back || '';
-    this.modalEl.querySelector('#input-image-url').value = card.imageUrl || '';
-    this.modalEl.querySelector('#input-occ-title').value = card.front || '';
-    this.modalEl.querySelector('#input-occ-url').value = card.imageUrl || '';
-    this.modalEl.querySelector('#input-card-hint').value = card.hint || '';
-    this.modalEl.querySelector('#input-card-tags').value = (card.tags || []).join(', ');
+  _renderImageChips() {
+    const container = this.modalEl.querySelector('#image-chips-container');
+    const countEl = this.modalEl.querySelector('#image-attachments-count');
+    if (!container) return;
 
-    const occMode = card.occlusionMode || 'hide_all_guess_one';
+    if (countEl) {
+      const count = this.attachedImages.length;
+      countEl.textContent = `${count} ${count === 1 ? 'image' : 'images'} attached`;
+    }
+
+    if (this.attachedImages.length === 0) {
+      container.innerHTML = `
+        <span class="empty-chips-msg">No images attached yet. Add images below via browse, clipboard paste (Ctrl+V), or URL.</span>
+      `;
+      return;
+    }
+
+    container.innerHTML = this.attachedImages.map((img) => {
+      const isFront = img.side === 'front';
+      const sideText = isFront ? '📌 Question (Front)' : '📌 Answer (Back)';
+      return `
+        <div class="image-recipient-chip" data-img-id="${escapeHtml(img.id)}">
+          <div class="chip-preview-thumb" data-img-url="${escapeHtml(img.url)}" title="Click to preview image full-size">
+            <img src="${escapeHtml(img.url)}" alt="thumbnail" />
+          </div>
+          <span class="chip-name" title="${escapeHtml(img.name || 'Image Attachment')}">${escapeHtml(img.name || 'Image Attachment')}</span>
+          <button type="button" class="btn-chip-side-toggle ${isFront ? 'side-front' : 'side-back'}" data-img-id="${escapeHtml(img.id)}" title="Click to toggle placement between Question (Front) and Answer (Back)">
+            ${sideText}
+          </button>
+          <button type="button" class="btn-chip-preview" data-img-url="${escapeHtml(img.url)}" title="View full size">🔍</button>
+          <button type="button" class="btn-chip-remove" data-img-id="${escapeHtml(img.id)}" title="Remove image">&times;</button>
+        </div>
+      `;
+    }).join('');
+
+    // Wire events on chips
+    container.querySelectorAll('.chip-preview-thumb, .btn-chip-preview').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const url = el.dataset.imgUrl;
+        if (url) openImageLightbox(url, 'Attached Image Preview');
+      });
+    });
+
+    container.querySelectorAll('.btn-chip-side-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.imgId;
+        this._toggleImageSide(id);
+      });
+    });
+
+    container.querySelectorAll('.btn-chip-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.imgId;
+        this._removeAttachedImage(id);
+      });
+    });
+  }
+
+  _addAttachedImage(url, name = '', side = 'back') {
+    if (!url) return;
+    const count = this.attachedImages.length + 1;
+    const cleanName = name || `Image Attachment ${count}`;
+    const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    this.attachedImages.push({
+      id,
+      url,
+      name: cleanName,
+      side: side === 'front' ? 'front' : 'back'
+    });
+    this._renderImageChips();
+  }
+
+  _removeAttachedImage(id) {
+    this.attachedImages = this.attachedImages.filter(img => img.id !== id);
+    this._renderImageChips();
+  }
+
+  _toggleImageSide(id) {
+    const item = this.attachedImages.find(img => img.id === id);
+    if (item) {
+      item.side = item.side === 'front' ? 'back' : 'front';
+      this._renderImageChips();
+    }
+  }
+
+  _populateCardData(card) {
+    const sanitized = sanitizeCardImages(card);
+
+    const frontClean = cleanCardText(sanitized.front || '');
+    const backClean = cleanCardText(sanitized.back || '');
+    const clozeClean = cleanCardText(sanitized.clozeText || sanitized.front || '');
+
+    this.modalEl.querySelector('#input-card-front').value = frontClean;
+    this.modalEl.querySelector('#input-card-back').value = backClean;
+    this.modalEl.querySelector('#input-cloze-text').value = clozeClean;
+    this.modalEl.querySelector('#input-cloze-extra').value = backClean;
+    this.modalEl.querySelector('#input-image-front').value = frontClean;
+    this.modalEl.querySelector('#input-image-back').value = backClean;
+    this.modalEl.querySelector('#input-image-url').value = '';
+    this.modalEl.querySelector('#input-occ-title').value = frontClean;
+    this.modalEl.querySelector('#input-occ-url').value = sanitized.imageUrl || '';
+    this.modalEl.querySelector('#input-card-hint').value = sanitized.hint || '';
+    this.modalEl.querySelector('#input-card-tags').value = (sanitized.tags || []).join(', ');
+
+    const occMode = sanitized.occlusionMode || 'hide_all_guess_one';
     const occRadio = this.modalEl.querySelector(`input[name="input-occ-mode"][value="${occMode}"]`);
     if (occRadio) occRadio.checked = true;
 
-    const clozeMode = card.clozeMode || 'hide_all_guess_one';
+    const clozeMode = sanitized.clozeMode || 'hide_all_guess_one';
     const clozeRadio = this.modalEl.querySelector(`input[name="input-cloze-mode"][value="${clozeMode}"]`);
     if (clozeRadio) clozeRadio.checked = true;
 
-    if (card.imageUrl && card.type === CARD_TYPES.IMAGE) {
-      this._renderImagePreview(card.imageUrl);
+    // Populate attached images
+    if (Array.isArray(sanitized.images) && sanitized.images.length > 0) {
+      this.attachedImages = sanitized.images.map((img, idx) => ({
+        id: img.id || `img_${idx + 1}`,
+        url: img.url,
+        name: img.name || `Image Attachment ${idx + 1}`,
+        side: img.side || 'back'
+      }));
+    } else if (sanitized.imageUrl && sanitized.type === CARD_TYPES.IMAGE) {
+      this.attachedImages = [{
+        id: 'img_1',
+        url: sanitized.imageUrl,
+        name: 'Image Attachment 1',
+        side: sanitized.imageSide || 'back'
+      }];
+    } else {
+      this.attachedImages = [];
     }
 
-    if (card.imageUrl && card.type === CARD_TYPES.IMAGE_OCCLUSION) {
-      this._initOcclusionEditor(card.imageUrl, card.imageOcclusions || []);
+    if (this.attachedImages.length > 0 && sanitized.type !== CARD_TYPES.IMAGE_OCCLUSION) {
+      this.activeType = CARD_TYPES.IMAGE;
+    }
+
+    this._renderImageChips();
+
+    if (sanitized.imageUrl && sanitized.type === CARD_TYPES.IMAGE_OCCLUSION) {
+      this._initOcclusionEditor(sanitized.imageUrl, sanitized.imageOcclusions || []);
     }
   }
 
@@ -465,7 +599,8 @@ export class CardEditorModal {
     if (defaultOccRadio) defaultOccRadio.checked = true;
     const defaultClozeRadio = this.modalEl.querySelector('input[name="input-cloze-mode"][value="hide_all_guess_one"]');
     if (defaultClozeRadio) defaultClozeRadio.checked = true;
-    this.modalEl.querySelector('#image-preview-box').classList.add('hidden');
+    this.attachedImages = [];
+    this._renderImageChips();
     this.modalEl.querySelector('#occlusion-editor-container').classList.add('hidden');
     this.occlusionEditor = null;
     this._toggleInlineNewDeckPanel(false);
@@ -484,11 +619,8 @@ export class CardEditorModal {
     this.modalEl.querySelector('#input-card-hint').value = '';
     this.modalEl.querySelector('#input-card-tags').value = '';
 
-    const previewBox = this.modalEl.querySelector('#image-preview-box');
-    if (previewBox) {
-      previewBox.innerHTML = '';
-      previewBox.classList.add('hidden');
-    }
+    this.attachedImages = [];
+    this._renderImageChips();
 
     const fileInput = this.modalEl.querySelector('#input-image-file');
     if (fileInput) fileInput.value = '';
@@ -518,12 +650,6 @@ export class CardEditorModal {
         if (el) el.focus();
       }
     }, 50);
-  }
-
-  _renderImagePreview(url) {
-    const preview = this.modalEl.querySelector('#image-preview-box');
-    preview.innerHTML = `<img src="${url}" alt="Preview" style="max-height: 180px; border-radius: 6px;"/>`;
-    preview.classList.remove('hidden');
   }
 
   _initOcclusionEditor(url, initialBoxes = []) {
@@ -698,26 +824,41 @@ export class CardEditorModal {
       });
     }
 
-    // Standard Image Dropzone & File Pick
+    // Image Upload Dropzone, Multi-file pick & URL Add
     const dropzone = this.modalEl.querySelector('#image-upload-dropzone');
     const fileInput = this.modalEl.querySelector('#input-image-file');
     const urlInput = this.modalEl.querySelector('#input-image-url');
+    const btnAddUrl = this.modalEl.querySelector('#btn-add-image-url');
 
     dropzone.onclick = () => fileInput.click();
     fileInput.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
+      const files = Array.from(e.target.files || []);
+      for (const file of files) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          urlInput.value = event.target.result;
-          this._renderImagePreview(event.target.result);
+          this._addAttachedImage(event.target.result, file.name, 'back');
         };
         reader.readAsDataURL(file);
       }
+      fileInput.value = '';
     };
-    urlInput.oninput = (e) => {
-      if (e.target.value) this._renderImagePreview(e.target.value);
+
+    const handleAddImageUrl = () => {
+      const url = urlInput.value.trim();
+      if (url) {
+        this._addAttachedImage(url, 'Linked Image', 'back');
+        urlInput.value = '';
+      }
     };
+    if (btnAddUrl) btnAddUrl.onclick = handleAddImageUrl;
+    if (urlInput) {
+      urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAddImageUrl();
+        }
+      });
+    }
 
     // Occlusion Dropzone & File Pick
     const occDropzone = this.modalEl.querySelector('#occ-upload-dropzone');
@@ -755,8 +896,10 @@ export class CardEditorModal {
               occUrlInput.value = event.target.result;
               this._initOcclusionEditor(event.target.result, []);
             } else if (this.activeType === CARD_TYPES.IMAGE) {
-              urlInput.value = event.target.result;
-              this._renderImagePreview(event.target.result);
+              this._addAttachedImage(event.target.result, 'Pasted Image', 'back');
+            } else {
+              this._switchTypeTab(CARD_TYPES.IMAGE);
+              this._addAttachedImage(event.target.result, 'Pasted Image', 'back');
             }
           };
           reader.readAsDataURL(blob);
@@ -822,11 +965,22 @@ export class CardEditorModal {
     } else if (this.activeType === CARD_TYPES.IMAGE) {
       front = this.modalEl.querySelector('#input-image-front').value.trim();
       back = this.modalEl.querySelector('#input-image-back').value.trim();
-      imageUrl = this.modalEl.querySelector('#input-image-url').value.trim();
-      if (!imageUrl || !back) {
-        alert('Please provide an image and the answer.');
+
+      const pendingUrl = this.modalEl.querySelector('#input-image-url').value.trim();
+      if (pendingUrl) {
+        this._addAttachedImage(pendingUrl, 'Linked Image', 'back');
+        this.modalEl.querySelector('#input-image-url').value = '';
+      }
+
+      if (this.attachedImages.length === 0) {
+        alert('Please attach at least one image for an Image card.');
         return false;
       }
+      if (!front && !back) {
+        alert('Please provide a prompt/question or answer for this card.');
+        return false;
+      }
+      imageUrl = this.attachedImages[0].url;
     }
 
     let occlusionMode = 'hide_all_guess_one';
@@ -857,7 +1011,9 @@ export class CardEditorModal {
       clozeText,
       clozeMode,
       clozeSrs: this.currentCard ? this.currentCard.clozeSrs : {},
-      imageUrl,
+      images: this.activeType === CARD_TYPES.IMAGE ? [...this.attachedImages] : (this.currentCard?.images || []),
+      imageUrl: this.activeType === CARD_TYPES.IMAGE && this.attachedImages.length > 0 ? this.attachedImages[0].url : imageUrl,
+      imageSide: this.activeType === CARD_TYPES.IMAGE && this.attachedImages.length > 0 ? (this.attachedImages[0].side || 'back') : 'back',
       imageOcclusions,
       occlusionMode,
       boxSrs: this.currentCard ? this.currentCard.boxSrs : {},

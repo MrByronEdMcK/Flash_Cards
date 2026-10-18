@@ -7,6 +7,43 @@ import { storage } from '../storage.js';
 import { isCardDue, formatInterval, getDailyReviewQueue, getDateString } from '../srs.js';
 import { getCardCount, getDueCountForCard, getReviewItemsForCard } from '../models.js';
 
+export function openImageLightbox(imgUrl, title = 'Image Preview') {
+  if (!imgUrl) return;
+  let lightbox = document.getElementById('image-lightbox-modal');
+  if (!lightbox) {
+    lightbox = document.createElement('div');
+    lightbox.id = 'image-lightbox-modal';
+    lightbox.className = 'image-lightbox-modal hidden';
+    lightbox.innerHTML = `
+      <div class="lightbox-overlay"></div>
+      <div class="lightbox-container animate-scale-up">
+        <div class="lightbox-top-bar">
+          <span class="lightbox-title">${escapeHtml(title)}</span>
+          <button type="button" class="lightbox-close-btn" id="btn-close-lightbox">&times;</button>
+        </div>
+        <div class="lightbox-image-wrap">
+          <img src="" id="lightbox-full-img" alt="Attached Image" />
+        </div>
+      </div>
+    `;
+    document.body.appendChild(lightbox);
+    const close = () => lightbox.classList.add('hidden');
+    lightbox.querySelector('.lightbox-overlay').onclick = close;
+    lightbox.querySelector('#btn-close-lightbox').onclick = close;
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !lightbox.classList.contains('hidden')) {
+        close();
+      }
+    });
+  }
+
+  const imgEl = lightbox.querySelector('#lightbox-full-img');
+  const titleEl = lightbox.querySelector('.lightbox-title');
+  if (imgEl) imgEl.src = imgUrl;
+  if (titleEl) titleEl.textContent = title;
+  lightbox.classList.remove('hidden');
+}
+
 export class TreeView {
   constructor(container, navigateTo) {
     this.container = container;
@@ -16,6 +53,7 @@ export class TreeView {
     this.draggedGroupId = null;
     this.descendantsOfDragged = null;
     this.dragHoverExpandTimer = null;
+    this.statsMode = localStorage.getItem('studyCards_treeStatsMode') || 'full'; // 'full', 'compact', 'hidden'
   }
 
   async render(options = {}) {
@@ -101,7 +139,7 @@ export class TreeView {
     this.container.innerHTML = `
       <div class="deck-manager-layout animate-fade-in">
         <!-- Left Sidebar: Hierarchical Tree Navigator -->
-        <aside class="tree-sidebar">
+        <aside class="tree-sidebar ${this.statsMode === 'hidden' ? 'stats-hidden' : (this.statsMode === 'compact' ? 'stats-compact' : 'stats-full')}">
           <div class="tree-sidebar-header">
             <div>
               <h3>Folders &amp; Decks</h3>
@@ -109,9 +147,15 @@ export class TreeView {
                 Drag &amp; drop to reorganise
               </span>
             </div>
-            <button class="btn btn-primary btn-xs" id="btn-add-root-group" title="Add New Class/Subject">
-              + Add Class
-            </button>
+            <div class="tree-header-actions" style="display: flex; align-items: center; gap: 0.35rem;">
+              <button type="button" class="btn btn-ghost btn-xs btn-tree-stats-toggle" id="btn-toggle-tree-stats" title="Show/Hide Badges: Full Stats ➔ Compact ➔ Titles Only (Max Space)">
+                <span id="tree-stats-icon">${this.statsMode === 'hidden' ? '🙈' : (this.statsMode === 'compact' ? '📊' : '👁️')}</span>
+                <span id="tree-stats-label">${this.statsMode === 'hidden' ? 'Titles Only' : (this.statsMode === 'compact' ? 'Compact' : 'Full')}</span>
+              </button>
+              <button class="btn btn-primary btn-xs" id="btn-add-root-group" title="Add New Class/Subject">
+                + Add Class
+              </button>
+            </div>
           </div>
 
           <div class="tree-nodes-container">
@@ -164,6 +208,9 @@ export class TreeView {
   }
 
   _renderTreeNodes(nodes, cardCounts, dueCounts, depth) {
+    const isHidden = this.statsMode === 'hidden';
+    const isCompact = this.statsMode === 'compact';
+
     return `
       <ul class="tree-ul depth-${depth}">
         ${nodes.map(node => {
@@ -173,11 +220,32 @@ export class TreeView {
           const totalCards = cardCounts[node.id] || 0;
           const dueCards = dueCounts[node.id] || 0;
 
+          let badgesHtml = '';
+          if (!isHidden) {
+            if (isCompact) {
+              badgesHtml = `
+                <div class="tree-node-badges compact">
+                  <span class="badge ${dueCards > 0 ? 'badge-due' : 'badge-neutral'}" title="${dueCards} due today, ${totalCards} total cards">
+                    ${dueCards > 0 ? `${dueCards}/` : ''}${totalCards}
+                  </span>
+                </div>
+              `;
+            } else {
+              badgesHtml = `
+                <div class="tree-node-badges">
+                  ${dueCards > 0 ? `<span class="badge badge-due">${dueCards} due</span>` : ''}
+                  <span class="badge badge-neutral">${totalCards}</span>
+                </div>
+              `;
+            }
+          }
+
           return `
             <li class="tree-node-item" data-group-id="${node.id}">
               <div class="tree-node-row ${isSelected ? 'selected' : ''}" 
                    draggable="true" 
-                   data-drag-id="${node.id}">
+                   data-drag-id="${node.id}"
+                   title="${escapeHtml(node.name)} (${totalCards} cards, ${dueCards} due)">
                 <span class="tree-drag-handle" title="Drag to reorganise folder" aria-label="Drag handle">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
                     <circle cx="9" cy="6" r="2.2"></circle>
@@ -194,13 +262,10 @@ export class TreeView {
                 
                 <div class="tree-node-title" data-select-id="${node.id}">
                   <span class="tree-type-pill pill-${node.type || 'custom'}">${(node.type || 'deck').toUpperCase()}</span>
-                  <span class="tree-node-name">${escapeHtml(node.name)}</span>
+                  <span class="tree-node-name" title="${escapeHtml(node.name)}">${escapeHtml(node.name)}</span>
                 </div>
 
-                <div class="tree-node-badges">
-                  ${dueCards > 0 ? `<span class="badge badge-due">${dueCards} due</span>` : ''}
-                  <span class="badge badge-neutral">${totalCards}</span>
-                </div>
+                ${badgesHtml}
               </div>
 
               ${hasChildren && isExpanded ? this._renderTreeNodes(node.children, cardCounts, dueCounts, depth + 1) : ''}
@@ -260,6 +325,59 @@ export class TreeView {
     return 'Sub-deck';
   }
 
+  _cleanCardText(str) {
+    if (!str || typeof str !== 'string') return '';
+    return str
+      .replace(/<img\b[^>]*>/gi, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  _getCardImages(card) {
+    if (Array.isArray(card.images) && card.images.length > 0) {
+      return card.images;
+    }
+    if (card.imageUrl) {
+      return [{
+        id: 'img_primary',
+        url: card.imageUrl,
+        side: card.imageSide || 'back',
+        name: 'Image Attachment 1'
+      }];
+    }
+    const extracted = [];
+    const scan = (html, side) => {
+      if (!html || typeof html !== 'string' || !html.includes('<img')) return;
+      const matches = Array.from(html.matchAll(/<img\s+[^>]*?src=["']([^"']+)["'][^>]*>/gi));
+      for (const m of matches) {
+        extracted.push({
+          id: `img_${extracted.length + 1}`,
+          url: m[1],
+          side: side,
+          name: `Image Attachment ${extracted.length + 1}`
+        });
+      }
+    };
+    scan(card.front, 'front');
+    scan(card.back, 'back');
+    scan(card.clozeText, 'front');
+    return extracted;
+  }
+
+  _renderAttachmentTile(img) {
+    const isFront = img.side === 'front';
+    const sideLabel = isFront ? 'Question' : 'Answer';
+    return `
+      <div class="card-attachment-tile" data-img-url="${escapeHtml(img.url)}" title="Click to view full image (${sideLabel})">
+        <span class="attachment-tile-icon">🖼️</span>
+        <span class="attachment-tile-name">${escapeHtml(img.name || 'Image Attachment')}</span>
+        <span class="attachment-tile-side ${img.side}">${sideLabel}</span>
+        <span class="attachment-tile-zoom-btn">🔍 View</span>
+      </div>
+    `;
+  }
+
   _renderCardItem(card) {
     const totalCount = getCardCount(card);
     const srs = card.srs || { state: 'new', interval: 0 };
@@ -285,23 +403,54 @@ export class TreeView {
       badgeClass = 'badge-neutral';
     }
 
+    const frontClean = this._cleanCardText(card.front);
+    const backClean = this._cleanCardText(card.back);
+    const images = this._getCardImages(card);
+    const frontImages = images.filter(img => img.side === 'front');
+    const backImages = images.filter(img => img.side !== 'front');
+
     let previewContent = '';
     if (card.type === 'cloze') {
-      previewContent = `<div class="card-item-front">${escapeHtml(card.clozeText || card.front)}</div>`;
+      const clozeClean = this._cleanCardText(card.clozeText || card.front);
+      previewContent = `
+        <div class="card-item-front">${escapeHtml(clozeClean)}</div>
+        ${images.length > 0 ? `
+          <div class="card-attachments-row">
+            ${images.map(img => this._renderAttachmentTile(img)).join('')}
+          </div>
+        ` : ''}
+        ${backClean ? `<div class="card-item-back">${escapeHtml(backClean)}</div>` : ''}
+      `;
     } else if (card.type === 'image_occlusion') {
       previewContent = `
         <div class="card-item-front">
-          <strong>[Image Occlusion Card]</strong> ${escapeHtml(card.front)}
+          <strong>[Image Occlusion Card]</strong> ${escapeHtml(frontClean || 'Diagram')}
           <div class="occ-preview-thumbnail" style="margin-top: 6px;">
-            <img src="${escapeHtml(card.imageUrl)}" alt="Diagram" style="max-height: 80px; border-radius: 4px; object-fit: cover;"/>
+            <img src="${escapeHtml(card.imageUrl)}" alt="Diagram" style="max-height: 80px; border-radius: 4px; object-fit: cover; cursor: pointer;" class="preview-clickable-img" data-img-url="${escapeHtml(card.imageUrl)}"/>
             <span class="occ-box-count">${(card.imageOcclusions || []).length} occlusion boxes (${totalCount} review cards)</span>
           </div>
         </div>
       `;
     } else {
+      // Basic, Reversible, or Image Card
       previewContent = `
-        <div class="card-item-front">${escapeHtml(card.front)}</div>
-        <div class="card-item-back">${escapeHtml(card.back)}</div>
+        <div class="card-item-front">
+          ${frontClean ? `<div>${escapeHtml(frontClean)}</div>` : ''}
+          ${frontImages.length > 0 ? `
+            <div class="card-attachments-row">
+              ${frontImages.map(img => this._renderAttachmentTile(img)).join('')}
+            </div>
+          ` : ''}
+        </div>
+        <div class="card-item-back">
+          ${backClean ? `<div>${escapeHtml(backClean)}</div>` : ''}
+          ${backImages.length > 0 ? `
+            <div class="card-attachments-row">
+              ${backImages.map(img => this._renderAttachmentTile(img)).join('')}
+            </div>
+          ` : ''}
+          ${(!backClean && backImages.length === 0) ? `<em style="color:var(--text-muted); font-size:0.85rem;">[No text answer]</em>` : ''}
+        </div>
       `;
     }
 
@@ -422,6 +571,35 @@ export class TreeView {
   }
 
   _attachEventListeners(groups) {
+    // Stats Badges Show/Hide Toggle
+    const btnStatsToggle = this.container.querySelector('#btn-toggle-tree-stats');
+    if (btnStatsToggle) {
+      btnStatsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.statsMode === 'full') {
+          this.statsMode = 'compact';
+        } else if (this.statsMode === 'compact') {
+          this.statsMode = 'hidden';
+        } else {
+          this.statsMode = 'full';
+        }
+        localStorage.setItem('studyCards_treeStatsMode', this.statsMode);
+        this.render();
+      });
+    }
+
+    // Attachment tile & image lightbox preview clicks
+    this.container.querySelectorAll('.card-attachment-tile, .preview-clickable-img').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const url = el.dataset.imgUrl;
+        const name = el.querySelector('.attachment-tile-name')?.textContent || 'Attached Image';
+        if (url) {
+          openImageLightbox(url, name);
+        }
+      });
+    });
+
     // Tree node expand/collapse
     this.container.querySelectorAll('[data-toggle-id]').forEach(btn => {
       btn.addEventListener('click', (e) => {

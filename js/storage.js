@@ -4,7 +4,7 @@
  * Handles cards, hierarchical groups, settings, review history, and JSON Import/Export.
  */
 
-import { getSampleData, createDefaultSettings, getGeneralKnowledgeData } from './models.js';
+import { getSampleData, createDefaultSettings, getGeneralKnowledgeData, sanitizeCardImages } from './models.js';
 import { getDateString, addDays } from './srs.js';
 
 const DB_NAME = 'FlashCardsDB';
@@ -56,6 +56,9 @@ class StorageService {
 
       // Heal review schedule & historical logs if affected by earlier reset
       await this._healReviewScheduleAndLogs();
+
+      // Clean & sanitize cards with attached images (extracting raw <img> HTML to card.images)
+      await this._sanitizeStoredCardImages();
 
       // Request persistent storage protection against browser eviction
       await this.requestPersistence();
@@ -163,9 +166,10 @@ class StorageService {
   }
 
   async saveCard(card) {
-    if (!this.isIndexedDBAvailable) return this._lsSaveCard(card);
-    card.updatedAt = new Date().toISOString();
-    return this._putInStore('cards', card);
+    const cleanCard = sanitizeCardImages(card);
+    cleanCard.updatedAt = new Date().toISOString();
+    if (!this.isIndexedDBAvailable) return this._lsSaveCard(cleanCard);
+    return this._putInStore('cards', cleanCard);
   }
 
   async deleteCard(id) {
@@ -501,6 +505,30 @@ class StorageService {
       console.log('[Storage] Review schedule and logs successfully healed.');
     } catch (err) {
       console.warn('[Storage] Failed to heal review schedule:', err);
+    }
+  }
+
+  async _sanitizeStoredCardImages() {
+    try {
+      const cards = await this.getCards();
+      let updatedCount = 0;
+      for (const c of cards) {
+        const hasImgTag = (c.front && typeof c.front === 'string' && c.front.includes('<img')) || 
+                          (c.back && typeof c.back === 'string' && c.back.includes('<img')) || 
+                          (c.clozeText && typeof c.clozeText === 'string' && c.clozeText.includes('<img'));
+        const needsImageInit = c.imageUrl && (!Array.isArray(c.images) || c.images.length === 0);
+
+        if (hasImgTag || needsImageInit) {
+          const cleaned = sanitizeCardImages({ ...c });
+          await this.saveCard(cleaned);
+          updatedCount++;
+        }
+      }
+      if (updatedCount > 0) {
+        console.log(`[Storage] Auto-sanitized ${updatedCount} cards containing attached images.`);
+      }
+    } catch (err) {
+      console.warn('[Storage] Error during card image sanitization:', err);
     }
   }
 

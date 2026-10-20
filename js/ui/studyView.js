@@ -125,12 +125,14 @@ export class StudyView {
       document.title = cleanName ? `${prefix}: ${cleanName} | StudyCards` : `${prefix} | StudyCards`;
     }
 
+    this._setupCardEditorListeners();
     this._renderCurrentCard();
     this._attachKeyListeners();
   }
 
   destroy() {
     document.body.classList.remove('study-mode-active');
+    this._cleanupCardEditorListeners();
     if (this.keyListener) {
       window.removeEventListener('keydown', this.keyListener);
       this.keyListener = null;
@@ -148,6 +150,13 @@ export class StudyView {
       if (document.querySelector('.modal-backdrop:not(.hidden)')) return;
 
       if (!this.session || this.session.currentIndex >= this.session.cards.length) return;
+
+      // Edit card mid-review shortcut (E)
+      if (e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        this._openCardEditorForCurrentCard();
+        return;
+      }
 
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
@@ -250,9 +259,14 @@ export class StudyView {
       <div class="study-arena animate-fade-in">
         <!-- Top Session Header -->
         <header class="study-session-header">
-          <button class="btn btn-ghost btn-sm" id="btn-exit-study">
-            &larr; Exit Session
-          </button>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-ghost btn-sm" id="btn-exit-study">
+              &larr; Exit Session
+            </button>
+            <button type="button" class="btn btn-outline btn-sm btn-edit-current-card" id="btn-edit-current-card" title="Edit or delete this card (Hotkey: E)">
+              ✏️ Edit Card
+            </button>
+          </div>
 
           <div class="study-session-meta">
             <span class="study-mode-pill pill-${this.session.mode}">
@@ -278,11 +292,12 @@ export class StudyView {
               <!-- FRONT FACE -->
               <div class="card-face card-face-front">
                 <div class="card-face-header">
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                     <span class="card-type-indicator">${(currentCard.type || 'basic').replace('_', ' ').toUpperCase()}</span>
                     ${currentCard.srs && currentCard.srs.consecutiveGoods === 1 ? `
                       <span class="badge badge-step-learning" title="Rated Good once. Needs 1 more Good rating in a row to graduate to tomorrow!">⭐ 1 of 2 Good</span>
                     ` : ''}
+                    <button type="button" class="btn-card-quick-edit" title="Edit or delete this card (Hotkey: E)">✏️ Edit</button>
                   </div>
                   <span class="card-flip-prompt">${currentCard.type === CARD_TYPES.IMAGE_OCCLUSION ? 'Click or Press <strong>Space</strong> to Reveal' : 'Click or Press <strong>Space</strong> to Flip'}</span>
                 </div>
@@ -303,11 +318,12 @@ export class StudyView {
                 <!-- BACK FACE (for non-occlusion cards) -->
                 <div class="card-face card-face-back">
                   <div class="card-face-header">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                       <span class="card-type-indicator">ANSWER</span>
                       ${currentCard.srs && currentCard.srs.consecutiveGoods === 1 ? `
                         <span class="badge badge-step-learning" title="Needs 1 more Good rating in a row to graduate!">⭐ 1 of 2 Good</span>
                       ` : ''}
+                      <button type="button" class="btn-card-quick-edit" title="Edit or delete this card (Hotkey: E)">✏️ Edit</button>
                     </div>
                     <span class="card-flip-prompt">Rate your recall</span>
                   </div>
@@ -341,10 +357,22 @@ export class StudyView {
       });
     }
 
+    const btnEditHeader = this.container.querySelector('#btn-edit-current-card');
+    if (btnEditHeader) {
+      btnEditHeader.addEventListener('click', () => this._openCardEditorForCurrentCard());
+    }
+
+    this.container.querySelectorAll('.btn-card-quick-edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._openCardEditorForCurrentCard();
+      });
+    });
+
     const cardPerspective = this.container.querySelector('.study-card-perspective');
     if (cardPerspective) {
       cardPerspective.addEventListener('click', (e) => {
-        if (e.target.closest('#btn-toggle-hint')) return;
+        if (e.target.closest('#btn-toggle-hint') || e.target.closest('.btn-card-quick-edit')) return;
         if (!this.session.isFlipped) {
           this._flipCard();
         }
@@ -906,6 +934,101 @@ export class StudyView {
       }
     };
     animate();
+  }
+
+  async _openCardEditorForCurrentCard() {
+    if (!this.session || this.session.currentIndex >= this.session.cards.length) return;
+    const currentItem = this.session.cards[this.session.currentIndex];
+    const masterId = currentItem.parentCard?.id || currentItem.id;
+    const masterCard = (await storage.getCard(masterId)) || currentItem.parentCard || currentItem;
+
+    if (window.app && window.app.cardEditor) {
+      window.app.cardEditor.open({ card: masterCard, fromStudy: true });
+    }
+  }
+
+  _setupCardEditorListeners() {
+    this._cleanupCardEditorListeners();
+
+    this._onCardSaved = (e) => {
+      if (!this.session || this.session.currentIndex >= this.session.cards.length) return;
+      const updatedCard = e.detail?.card;
+      if (!updatedCard) return;
+
+      const currentItem = this.session.cards[this.session.currentIndex];
+      const masterId = currentItem.parentCard?.id || currentItem.id;
+
+      if (masterId === updatedCard.id) {
+        for (let i = 0; i < this.session.cards.length; i++) {
+          const item = this.session.cards[i];
+          if ((item.parentCard?.id || item.id) === updatedCard.id) {
+            this.session.cards[i] = {
+              ...item,
+              ...updatedCard,
+              reviewItemId: item.reviewItemId,
+              targetOcclusionIndex: item.targetOcclusionIndex,
+              targetClozeNum: item.targetClozeNum,
+              isReverse: item.isReverse,
+              parentCard: updatedCard,
+              srs: item.srs
+            };
+          }
+        }
+        this._renderCurrentCard();
+        this._showToast('Card updated! Resumed review.');
+      }
+    };
+
+    this._onCardDeleted = (e) => {
+      if (!this.session || this.session.cards.length === 0) return;
+      const deletedId = e.detail?.cardId;
+      if (!deletedId) return;
+
+      this.session.cards = this.session.cards.filter(c => (c.parentCard?.id || c.id) !== deletedId);
+
+      if (this.session.cards.length === 0) {
+        this._renderCompletion();
+      } else {
+        if (this.session.currentIndex >= this.session.cards.length) {
+          this.session.currentIndex = Math.max(0, this.session.cards.length - 1);
+        }
+        this.session.isFlipped = false;
+        this._renderCurrentCard();
+        this._showToast('Card deleted. Resumed review.');
+      }
+    };
+
+    window.addEventListener('card-saved', this._onCardSaved);
+    window.addEventListener('card-deleted', this._onCardDeleted);
+  }
+
+  _cleanupCardEditorListeners() {
+    if (this._onCardSaved) {
+      window.removeEventListener('card-saved', this._onCardSaved);
+      this._onCardSaved = null;
+    }
+    if (this._onCardDeleted) {
+      window.removeEventListener('card-deleted', this._onCardDeleted);
+      this._onCardDeleted = null;
+    }
+  }
+
+  _showToast(msg) {
+    let toast = document.getElementById('study-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'study-toast';
+      toast.className = 'study-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.remove('hidden', 'fade-out');
+    toast.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      toast.classList.add('fade-out');
+      setTimeout(() => toast.classList.add('hidden'), 350);
+    }, 2400);
   }
 }
 

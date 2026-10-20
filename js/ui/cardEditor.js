@@ -243,6 +243,7 @@ export class CardEditorModal {
             </div>
 
             <div class="modal-footer" style="display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; flex-wrap: wrap;">
+              <button type="button" class="btn btn-ghost text-danger hidden" id="btn-delete-card" style="margin-right: auto;" title="Permanently delete this flashcard">🗑️ Delete Card</button>
               <div id="card-added-feedback" class="hidden" style="margin-right: auto; font-size: 0.88rem; font-weight: 600; color: var(--success, #16a34a); display: flex; align-items: center; gap: 0.35rem;">
                 <span id="card-added-feedback-text">✅ Card added!</span>
               </div>
@@ -274,12 +275,14 @@ export class CardEditorModal {
     const btnCancel = this.modalEl.querySelector('#btn-cancel-card');
     const btnAddContinue = this.modalEl.querySelector('#btn-add-card-continue');
     const btnSave = this.modalEl.querySelector('#btn-save-card');
+    const btnDelete = this.modalEl.querySelector('#btn-delete-card');
 
     if (this.currentCard) {
       titleEl.textContent = 'Edit Flashcard';
       btnCancel.textContent = 'Cancel';
       btnSave.textContent = 'Save Flashcard';
       if (btnAddContinue) btnAddContinue.classList.add('hidden');
+      if (btnDelete) btnDelete.classList.remove('hidden');
       this.activeType = this.currentCard.type || CARD_TYPES.BASIC;
       this._populateCardData(this.currentCard);
     } else {
@@ -287,6 +290,7 @@ export class CardEditorModal {
       btnCancel.textContent = 'Cancel';
       btnSave.textContent = 'Save & Close';
       if (btnAddContinue) btnAddContinue.classList.remove('hidden');
+      if (btnDelete) btnDelete.classList.add('hidden');
       this.activeType = CARD_TYPES.BASIC;
       this._resetForm();
     }
@@ -727,6 +731,21 @@ export class CardEditorModal {
       btnAddContinue.onclick = async (e) => {
         e.preventDefault();
         await this._saveCardData(false);
+      };
+    }
+
+    // "Delete Card" button (for editing existing cards)
+    const btnDelete = this.modalEl.querySelector('#btn-delete-card');
+    if (btnDelete) {
+      btnDelete.onclick = async (e) => {
+        e.preventDefault();
+        if (!this.currentCard) return;
+        if (confirm('Are you sure you want to permanently delete this flashcard?')) {
+          const cardId = this.currentCard.id;
+          await storage.deleteCard(cardId);
+          window.dispatchEvent(new CustomEvent('card-deleted', { detail: { cardId } }));
+          this.close();
+        }
       };
     }
 

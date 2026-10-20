@@ -24,6 +24,7 @@ export const OCCLUSION_MODES = {
 export const GROUP_TYPES = {
   CLASS: 'class',
   UNIT: 'unit',
+  HEADER: 'header',
   LESSON: 'lesson',
   CONCEPT: 'concept',
   CUSTOM: 'custom'

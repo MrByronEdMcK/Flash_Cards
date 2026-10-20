@@ -319,16 +319,20 @@ export async function renderDashboard(container, navigateTo) {
   // -------------------------------------------------------------
   let focusSummaryHtml = '';
   if (!isFocusActive) {
-    focusSummaryHtml = `<span class="focus-subtitle focus-prompt-highlight">⚠️ No decks in focus. Set decks in focus to generate your daily review set.</span>`;
+    focusSummaryHtml = `<span class="focus-subtitle focus-prompt-highlight">⚠️ No decks in focus. Set decks or headers in focus to generate your daily review set.</span>`;
   } else {
     focusSummaryHtml = `
       <div class="focus-tags">
         ${focusedGroupIds.map(gid => {
           const g = groupMap.get(gid);
-          const name = g ? g.name : 'Deck';
+          let label = g ? g.name : 'Deck';
+          if (g && g.parentId && groupMap.get(g.parentId)) {
+            const parent = groupMap.get(g.parentId);
+            label = `${parent.name} › ${g.name}`;
+          }
           return `
-            <span class="focus-tag">
-              🎯 ${escapeHtml(name)}
+            <span class="focus-tag" title="Focused: ${escapeHtml(label)}">
+              🎯 ${escapeHtml(label)}
               <span class="focus-tag-remove" data-remove-id="${gid}" title="Remove focus">&times;</span>
             </span>
           `;
@@ -361,7 +365,7 @@ export async function renderDashboard(container, navigateTo) {
             <div class="hero-actions">
               <button class="btn btn-primary btn-lg" id="btn-hero-select-focus">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
-                Set Decks in Focus
+                + Add Focus (Decks / Headers)
               </button>
               <button class="btn btn-secondary btn-lg" id="btn-new-card-quick">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -453,7 +457,7 @@ export async function renderDashboard(container, navigateTo) {
         <div class="focus-control-actions">
           <button class="btn ${isFocusActive ? 'btn-secondary' : 'btn-primary'} btn-sm" id="btn-open-focus-modal">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
-            ${isFocusActive ? 'Change Focus' : 'Set Focused Decks'}
+            ${isFocusActive ? '🎯 Change Focus' : '+ Add Focus'}
           </button>
           ${isFocusActive ? `
             <button class="btn btn-ghost btn-sm" id="btn-clear-focus">
@@ -478,17 +482,33 @@ export async function renderDashboard(container, navigateTo) {
         <div class="classes-grid">
           ${rootGroups.map(group => {
             const childGroups = groups.filter(g => g.parentId === group.id);
-            const childGroupIds = new Set(childGroups.map(g => g.id));
-            const classCards = cards.filter(c => c.groupId === group.id || childGroupIds.has(c.groupId));
-            const classReviewItems = classCards.flatMap(c => getReviewItemsForCard(c));
+            const allSubIds = getSubgroupIdsSync(group.id);
+
+            // Is the whole class focused?
+            const isWholeClassFocused = focusedGroupIds.includes(group.id);
+
+            // Check which headers beneath this class are focused
+            const focusedChildren = childGroups.filter(child => {
+              if (focusedGroupIds.includes(child.id)) return true;
+              const childSubs = getSubgroupIdsSync(child.id);
+              return Array.from(childSubs).some(sid => focusedGroupIds.includes(sid));
+            });
+            const isPartialFocus = !isWholeClassFocused && focusedChildren.length > 0;
+
+            // When partial focus is active, compute due count specifically for focused headers
+            const focusedChildIds = new Set(focusedChildren.flatMap(c => [c.id, ...Array.from(getSubgroupIdsSync(c.id))]));
+            const cardsForClassReview = isPartialFocus
+              ? cards.filter(c => c.groupId && focusedChildIds.has(c.groupId))
+              : cards.filter(c => c.groupId === group.id || allSubIds.has(c.groupId));
+
+            const classReviewItems = cardsForClassReview.flatMap(c => getReviewItemsForCard(c));
             const classDailyQueue = getDailyReviewQueue(classReviewItems, settings, reviewLogs, todayStr);
-            const totalInClass = classCards.reduce((sum, c) => sum + getCardCount(c), 0);
+            const totalInClass = cards.filter(c => c.groupId === group.id || allSubIds.has(c.groupId)).reduce((sum, c) => sum + getCardCount(c), 0);
             const dueInClass = classDailyQueue.totalDailyCount;
-            const isThisClassFocused = focusedGroupIds.includes(group.id);
 
             const iconEmoji = group.icon === 'globe' ? '🌍' : group.icon === 'dna' ? '🧬' : group.icon === 'atom' ? '⚛️' : group.icon === 'palette' ? '🎨' : group.icon === 'compass' ? '🧭' : group.icon === 'microscope' ? '🔬' : '📚';
             return `
-              <div class="class-card ${isThisClassFocused ? 'is-focused' : ''}" style="border-top-color: ${group.color || '#c05638'};">
+              <div class="class-card ${isWholeClassFocused || isPartialFocus ? 'is-focused' : ''}" style="border-top-color: ${group.color || '#c05638'};">
                 <div class="class-card-header">
                   <div class="class-name-wrap">
                     <span class="group-icon-badge" style="background: ${group.color}20; color: ${group.color};">
@@ -504,24 +524,53 @@ export async function renderDashboard(container, navigateTo) {
                 <div class="class-card-meta">
                   <span>${totalInClass} cards</span>
                   <span>•</span>
-                  <span>${childGroups.length} units</span>
-                  ${isThisClassFocused ? `<span>• <strong style="color: var(--primary);">In Focus</strong></span>` : ''}
+                  <span>${childGroups.length} headers</span>
+                  ${isWholeClassFocused ? `<span>• <strong style="color: var(--primary);">Class in Focus</strong></span>` : ''}
+                  ${isPartialFocus ? `<span>• <strong style="color: var(--primary);">🎯 ${focusedChildren.length} of ${childGroups.length} in Focus</strong></span>` : ''}
                 </div>
 
                 <div class="class-card-actions">
-                  <button class="btn btn-primary btn-sm btn-class-daily" data-group-id="${group.id}">
+                  <button class="btn btn-primary btn-sm btn-class-daily" data-group-id="${group.id}" data-partial-focus="${isPartialFocus ? Array.from(focusedChildIds).join(',') : ''}">
                     Daily (${dueInClass})
                   </button>
-                  <button class="btn btn-outline btn-sm btn-class-endless" data-group-id="${group.id}" title="Endless Practice">
+                  <button class="btn btn-outline btn-sm btn-class-endless" data-group-id="${group.id}" data-partial-focus="${isPartialFocus ? Array.from(focusedChildIds).join(',') : ''}" title="Endless Practice">
                     Endless
                   </button>
-                  <button class="btn ${isThisClassFocused ? 'btn-focused' : 'btn-outline'} btn-sm btn-class-focus-toggle" data-group-id="${group.id}">
-                    ${isThisClassFocused ? '✓ Focused' : '🎯 Focus'}
+                  <button class="btn ${isWholeClassFocused || isPartialFocus ? 'btn-focused' : 'btn-outline'} btn-sm btn-class-focus-toggle" data-group-id="${group.id}" title="${isWholeClassFocused ? 'Remove focus from class' : 'Focus entire class'}">
+                    ${isWholeClassFocused ? '✓ Focused (All)' : (isPartialFocus ? `🎯 Focused (${focusedChildren.length})` : '🎯 Focus Class')}
                   </button>
                   <button class="btn btn-ghost btn-sm btn-class-open" data-group-id="${group.id}" title="Open Folder">
                     View &rarr;
                   </button>
                 </div>
+
+                ${childGroups.length > 0 ? `
+                  <div class="class-card-headers-wrapper">
+                    <button type="button" class="btn-toggle-class-headers" data-target="headers-list-${group.id}">
+                      <span>Headers beneath class (${childGroups.length})</span>
+                      <span class="chevron">▾</span>
+                    </button>
+                    <div class="class-card-headers-list hidden" id="headers-list-${group.id}">
+                      ${childGroups.map(child => {
+                        const isChildFocused = focusedGroupIds.includes(child.id);
+                        const childSubs = getSubgroupIdsSync(child.id);
+                        const childCardsCount = cards.filter(c => c.groupId === child.id || childSubs.has(c.groupId)).length;
+                        return `
+                          <div class="class-header-item ${isChildFocused ? 'is-focused' : ''}">
+                            <div class="class-header-item-left">
+                              <span style="font-size: 0.95rem; line-height: 1;">📄</span>
+                              <span class="class-header-name" title="${escapeHtml(child.name)}">${escapeHtml(child.name)}</span>
+                              <span class="class-header-count">${childCardsCount} cards</span>
+                            </div>
+                            <button type="button" class="btn ${isChildFocused ? 'btn-focused' : 'btn-outline'} btn-xs btn-header-focus-toggle" data-header-id="${child.id}" data-parent-id="${group.id}" title="${isChildFocused ? 'Remove focus from this header' : 'Focus this header'}">
+                              ${isChildFocused ? '✓ Focused' : '🎯 Focus'}
+                            </button>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+                ` : ''}
               </div>
             `;
           }).join('')}
@@ -609,7 +658,7 @@ export async function renderDashboard(container, navigateTo) {
                 <p>Put decks in focus to generate your daily review set and preview your 30-day spaced repetition schedule.</p>
               </div>
             </div>
-            <button class="btn btn-primary btn-sm" id="btn-forecast-set-focus">Set Decks in Focus</button>
+            <button class="btn btn-primary btn-sm" id="btn-forecast-set-focus">+ Add Focus</button>
           </div>
         ` : ''}
 
@@ -827,17 +876,23 @@ export async function renderDashboard(container, navigateTo) {
         <div style="display: flex; align-items: center; gap: 0.75rem;">
           <span style="font-size: 1.5rem; line-height: 1;">🎯</span>
           <div>
-            <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; margin: 0; color: var(--text-main);">Set Decks in Focus</h3>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0 0;">Choose which Classes, Units, or Lessons to include in daily review.</p>
+            <h3 style="font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; margin: 0; color: var(--text-main);">Set Decks &amp; Headers in Focus</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0 0;">Select whole classes, or individual headers beneath a class, to focus your daily review.</p>
           </div>
         </div>
         <button class="btn-close" id="btn-close-focus-modal" title="Close dialog">&times;</button>
       </div>
 
       <div class="modal-body focus-modal-body">
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" class="form-input form-input-sm" id="input-focus-search" placeholder="🔍 Search classes or headers..." style="width: 100%; font-size: 0.82rem; padding: 0.45rem 0.75rem;" />
+        </div>
+
         <div class="focus-modal-toolbar">
-          <span class="focus-selection-count" id="focus-selection-count">0 decks selected</span>
+          <span class="focus-selection-count" id="focus-selection-count">0 items selected</span>
           <div class="focus-toolbar-actions">
+            <button type="button" class="btn btn-ghost btn-xs" id="btn-modal-expand-all">Expand All</button>
+            <button type="button" class="btn btn-ghost btn-xs" id="btn-modal-collapse-all">Collapse All</button>
             <button type="button" class="btn btn-ghost btn-xs" id="btn-modal-select-all">Select All</button>
             <button type="button" class="btn btn-ghost btn-xs" id="btn-modal-clear-all">Clear All</button>
           </div>
@@ -858,12 +913,47 @@ export async function renderDashboard(container, navigateTo) {
 
   const focusTreeList = modalEl.querySelector('#focus-tree-list');
   const focusSelectionCount = modalEl.querySelector('#focus-selection-count');
+  const collapsedGroupIds = new Set();
 
   function updateModalSelectionCount() {
     if (!focusSelectionCount || !focusTreeList) return;
     const checkedBoxes = focusTreeList.querySelectorAll('.focus-tree-item-checkbox:checked');
     const count = checkedBoxes.length;
-    focusSelectionCount.textContent = `${count} ${count === 1 ? 'deck' : 'decks'} selected`;
+    focusSelectionCount.textContent = `${count} ${count === 1 ? 'item' : 'items'} selected`;
+  }
+
+  function buildTreeItemRows(parentId, depth = 1) {
+    const children = groups.filter(g => g.parentId === parentId);
+    const result = [];
+    for (const child of children) {
+      const subIds = getSubgroupIdsSync(child.id);
+      const cardCount = cards.filter(c => c.groupId === child.id || subIds.has(c.groupId)).length;
+      const hasChildren = groups.some(g => g.parentId === child.id);
+
+      let levelLabel = 'Header';
+      if (child.type === 'unit' || depth === 1) levelLabel = 'Header';
+      else if (child.type === 'lesson' || depth === 2) levelLabel = 'Lesson';
+      else levelLabel = (child.type || 'Sub').toUpperCase();
+
+      let icon = child.icon === 'microscope' ? '🔬' : child.icon === 'compass' ? '🧭' : child.icon === 'atom' ? '⚛️' : child.icon === 'palette' ? '🎨' : (hasChildren ? '📁' : '📄');
+
+      result.push({
+        id: child.id,
+        name: child.name,
+        icon,
+        level: depth === 1 ? 'unit' : 'lesson',
+        depth,
+        levelLabel,
+        cardCount,
+        hasChildren,
+        parentId: child.parentId
+      });
+
+      if (hasChildren) {
+        result.push(...buildTreeItemRows(child.id, depth + 1));
+      }
+    }
+    return result;
   }
 
   function renderHierarchyTree(checkedIdsSet) {
@@ -872,48 +962,25 @@ export async function renderDashboard(container, navigateTo) {
     const items = [];
 
     for (const root of roots) {
-      const units = groups.filter(g => g.parentId === root.id);
-      const allSubIds = getSubgroupIdsSync(root.id);
-      const totalClassCards = cards.filter(c => c.groupId === root.id || allSubIds.has(c.groupId)).length;
+      const subIds = getSubgroupIdsSync(root.id);
+      const totalClassCards = cards.filter(c => c.groupId === root.id || subIds.has(c.groupId)).length;
+      const hasChildren = groups.some(g => g.parentId === root.id);
+
+      const iconEmoji = root.icon === 'globe' ? '🌍' : root.icon === 'dna' ? '🧬' : root.icon === 'microscope' ? '🔬' : root.icon === 'atom' ? '⚛️' : '📚';
 
       items.push({
         id: root.id,
         name: root.name,
-        icon: '📚',
+        icon: iconEmoji,
         level: 'class',
+        depth: 0,
         levelLabel: 'Class',
         cardCount: totalClassCards,
+        hasChildren,
         parentId: null
       });
 
-      for (const unit of units) {
-        const lessons = groups.filter(g => g.parentId === unit.id);
-        const unitSubs = getSubgroupIdsSync(unit.id);
-        const totalUnitCards = cards.filter(c => c.groupId === unit.id || unitSubs.has(c.groupId)).length;
-
-        items.push({
-          id: unit.id,
-          name: unit.name,
-          icon: '🔬',
-          level: 'unit',
-          levelLabel: 'Unit',
-          cardCount: totalUnitCards,
-          parentId: root.id
-        });
-
-        for (const lesson of lessons) {
-          const lessonCards = cards.filter(c => c.groupId === lesson.id).length;
-          items.push({
-            id: lesson.id,
-            name: lesson.name,
-            icon: '📄',
-            level: 'lesson',
-            levelLabel: 'Lesson',
-            cardCount: lessonCards,
-            parentId: unit.id
-          });
-        }
-      }
+      items.push(...buildTreeItemRows(root.id, 1));
     }
 
     // Unassigned or custom decks
@@ -925,20 +992,32 @@ export async function renderDashboard(container, navigateTo) {
         name: orph.name,
         icon: '📁',
         level: 'lesson',
+        depth: 0,
         levelLabel: 'Deck',
         cardCount: cards.filter(c => c.groupId === orph.id).length,
+        hasChildren: false,
         parentId: null
       });
     }
 
     focusTreeList.innerHTML = items.map(item => {
       const isChecked = checkedIdsSet.has(item.id);
+      const isCollapsed = collapsedGroupIds.has(item.id);
+      const paddingLeftRem = item.depth === 0 ? 0.75 : (item.depth * 1.6 + 0.75);
+
       return `
-        <div class="focus-tree-item level-${item.level} ${isChecked ? 'is-checked' : ''}" data-group-id="${item.id}">
+        <div class="focus-tree-item level-${item.level} ${isChecked ? 'is-checked' : ''}" 
+             data-group-id="${item.id}" 
+             data-parent-id="${item.parentId || ''}" 
+             data-depth="${item.depth}"
+             style="padding-left: ${paddingLeftRem}rem;">
           <div class="focus-tree-item-left">
-            <input type="checkbox" class="focus-tree-item-checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} />
+            <button type="button" class="focus-tree-expand-btn ${item.hasChildren ? '' : 'invisible'} ${isCollapsed ? 'is-collapsed' : ''}" data-toggle-id="${item.id}" title="${isCollapsed ? 'Expand' : 'Collapse'}">
+              ▾
+            </button>
+            <input type="checkbox" class="focus-tree-item-checkbox" value="${item.id}" data-parent-id="${item.parentId || ''}" data-depth="${item.depth}" ${isChecked ? 'checked' : ''} />
             <span style="font-size: 1.1rem; line-height: 1;">${item.icon}</span>
-            <span class="focus-item-name">${escapeHtml(item.name)}</span>
+            <span class="focus-item-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
             <span class="focus-level-badge badge-${item.level}-lvl">${item.levelLabel}</span>
           </div>
           <span class="focus-tree-item-count">${item.cardCount} cards</span>
@@ -946,18 +1025,103 @@ export async function renderDashboard(container, navigateTo) {
       `;
     }).join('');
 
+    _applyCollapseState();
     updateModalSelectionCount();
+    _wireHierarchyTreeEvents();
+  }
+
+  function _applyCollapseState() {
+    const allRows = focusTreeList.querySelectorAll('.focus-tree-item');
+    allRows.forEach(row => {
+      const parentId = row.dataset.parentId;
+      if (!parentId) {
+        row.style.display = 'flex';
+        return;
+      }
+      let isHidden = false;
+      let currParentId = parentId;
+      while (currParentId) {
+        if (collapsedGroupIds.has(currParentId)) {
+          isHidden = true;
+          break;
+        }
+        const parentRow = focusTreeList.querySelector(`.focus-tree-item[data-group-id="${currParentId}"]`);
+        currParentId = parentRow ? parentRow.dataset.parentId : null;
+      }
+      row.style.display = isHidden ? 'none' : 'flex';
+    });
+  }
+
+  function _wireHierarchyTreeEvents() {
+    // Expand/collapse button click
+    focusTreeList.querySelectorAll('.focus-tree-expand-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const gid = btn.dataset.toggleId;
+        if (collapsedGroupIds.has(gid)) {
+          collapsedGroupIds.delete(gid);
+        } else {
+          collapsedGroupIds.add(gid);
+        }
+        btn.classList.toggle('is-collapsed', collapsedGroupIds.has(gid));
+        _applyCollapseState();
+      });
+    });
+
+    // Checkbox toggle & parent/child coordination
+    const checkboxes = focusTreeList.querySelectorAll('.focus-tree-item-checkbox');
+
+    function syncParentChild(changedCb) {
+      const gId = changedCb.value;
+      const isChecked = changedCb.checked;
+      const row = changedCb.closest('.focus-tree-item');
+      if (row) row.classList.toggle('is-checked', isChecked);
+
+      // 1. If this is a parent (has descendants), update all descendants
+      const descendantIds = getSubgroupIdsSync(gId);
+      if (descendantIds.size > 0) {
+        checkboxes.forEach(cb => {
+          if (descendantIds.has(cb.value)) {
+            cb.checked = isChecked;
+            cb.closest('.focus-tree-item')?.classList.toggle('is-checked', isChecked);
+          }
+        });
+      }
+
+      // 2. If this is a child, coordinate with its parent
+      const parentId = changedCb.dataset.parentId;
+      if (parentId) {
+        const parentCb = focusTreeList.querySelector(`.focus-tree-item-checkbox[value="${parentId}"]`);
+        if (parentCb) {
+          const siblingCbs = focusTreeList.querySelectorAll(`.focus-tree-item-checkbox[data-parent-id="${parentId}"]`);
+          const allSiblingsChecked = Array.from(siblingCbs).every(s => s.checked);
+
+          if (isChecked) {
+            parentCb.checked = allSiblingsChecked;
+            parentCb.closest('.focus-tree-item')?.classList.toggle('is-checked', allSiblingsChecked);
+          } else {
+            parentCb.checked = false;
+            parentCb.closest('.focus-tree-item')?.classList.remove('is-checked');
+          }
+        }
+      }
+
+      updateModalSelectionCount();
+    }
+
+    checkboxes.forEach(cb => {
+      cb.addEventListener('change', () => syncParentChild(cb));
+    });
 
     // Toggle row on item click
     focusTreeList.querySelectorAll('.focus-tree-item').forEach(row => {
       row.addEventListener('click', (e) => {
+        if (e.target.closest('.focus-tree-expand-btn') || e.target.closest('.focus-tree-item-checkbox')) return;
         const cb = row.querySelector('.focus-tree-item-checkbox');
-        if (!cb) return;
-        if (e.target !== cb) {
+        if (cb) {
           cb.checked = !cb.checked;
+          syncParentChild(cb);
         }
-        row.classList.toggle('is-checked', cb.checked);
-        updateModalSelectionCount();
       });
     });
   }
@@ -979,6 +1143,20 @@ export async function renderDashboard(container, navigateTo) {
     if (e.target === modalEl) closeFocusModal();
   });
 
+  // Modal Expand All / Collapse All
+  modalEl.querySelector('#btn-modal-expand-all')?.addEventListener('click', () => {
+    collapsedGroupIds.clear();
+    focusTreeList.querySelectorAll('.focus-tree-expand-btn').forEach(b => b.classList.remove('is-collapsed'));
+    _applyCollapseState();
+  });
+
+  modalEl.querySelector('#btn-modal-collapse-all')?.addEventListener('click', () => {
+    const roots = groups.filter(g => !g.parentId);
+    roots.forEach(r => collapsedGroupIds.add(r.id));
+    focusTreeList.querySelectorAll('.focus-tree-expand-btn').forEach(b => b.classList.add('is-collapsed'));
+    _applyCollapseState();
+  });
+
   // Modal Select All / Clear All
   modalEl.querySelector('#btn-modal-clear-all')?.addEventListener('click', () => {
     focusTreeList.querySelectorAll('.focus-tree-item-checkbox').forEach(cb => {
@@ -995,6 +1173,24 @@ export async function renderDashboard(container, navigateTo) {
     });
     updateModalSelectionCount();
   });
+
+  // Modal Search
+  const inputSearch = modalEl.querySelector('#input-focus-search');
+  if (inputSearch) {
+    inputSearch.addEventListener('input', () => {
+      const term = inputSearch.value.trim().toLowerCase();
+      const allRows = focusTreeList.querySelectorAll('.focus-tree-item');
+      if (!term) {
+        _applyCollapseState();
+        return;
+      }
+      allRows.forEach(row => {
+        const name = (row.querySelector('.focus-item-name')?.textContent || '').toLowerCase();
+        const matches = name.includes(term);
+        row.style.display = matches ? 'flex' : 'none';
+      });
+    });
+  }
 
   // Modal Apply Focus
   modalEl.querySelector('#btn-modal-apply')?.addEventListener('click', async () => {
@@ -1075,11 +1271,49 @@ export async function renderDashboard(container, navigateTo) {
   container.querySelectorAll('.btn-class-focus-toggle').forEach(btn => {
     btn.addEventListener('click', async () => {
       const gId = btn.dataset.groupId;
+      const childSubs = getSubgroupIdsSync(gId);
       let updated;
       if (focusedGroupIds.includes(gId)) {
-        updated = focusedGroupIds.filter(id => id !== gId);
+        // Unfocus entire class
+        updated = focusedGroupIds.filter(id => id !== gId && !childSubs.has(id));
       } else {
-        updated = [...focusedGroupIds, gId];
+        // Focus entire class (and remove individual child IDs so it cleanly holds the parent)
+        updated = focusedGroupIds.filter(id => !childSubs.has(id));
+        updated.push(gId);
+      }
+      settings.focusedGroupIds = updated;
+      await storage.saveSettings(settings);
+      renderDashboard(container, navigateTo);
+    });
+  });
+
+  // Toggle inline headers beneath class
+  container.querySelectorAll('.btn-toggle-class-headers').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.target;
+      const list = container.querySelector(`#${targetId}`);
+      if (list) {
+        list.classList.toggle('hidden');
+        btn.classList.toggle('active', !list.classList.contains('hidden'));
+      }
+    });
+  });
+
+  // Toggle focus for an individual header beneath a class
+  container.querySelectorAll('.btn-header-focus-toggle').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const hId = btn.dataset.headerId;
+      const parentId = btn.dataset.parentId;
+      let updated;
+      if (focusedGroupIds.includes(hId)) {
+        // Remove focus from this header
+        updated = focusedGroupIds.filter(id => id !== hId);
+      } else {
+        // Focus this header: ensure the parent class is removed so only this specific header is focused
+        updated = focusedGroupIds.filter(id => id !== parentId);
+        updated.push(hId);
       }
       settings.focusedGroupIds = updated;
       await storage.saveSettings(settings);
@@ -1090,13 +1324,25 @@ export async function renderDashboard(container, navigateTo) {
   // Class card actions
   container.querySelectorAll('.btn-class-daily').forEach(btn => {
     btn.addEventListener('click', () => {
-      navigateTo('study', { mode: 'daily', groupId: btn.dataset.groupId, includeSubgroups: true });
+      const partialFocus = btn.dataset.partialFocus;
+      if (partialFocus) {
+        const focusedIds = partialFocus.split(',').filter(Boolean);
+        navigateTo('study', { mode: 'daily', focusedGroupIds: focusedIds });
+      } else {
+        navigateTo('study', { mode: 'daily', groupId: btn.dataset.groupId, includeSubgroups: true });
+      }
     });
   });
 
   container.querySelectorAll('.btn-class-endless').forEach(btn => {
     btn.addEventListener('click', () => {
-      navigateTo('study', { mode: 'endless', groupId: btn.dataset.groupId, includeSubgroups: true });
+      const partialFocus = btn.dataset.partialFocus;
+      if (partialFocus) {
+        const focusedIds = partialFocus.split(',').filter(Boolean);
+        navigateTo('study', { mode: 'endless', focusedGroupIds: focusedIds });
+      } else {
+        navigateTo('study', { mode: 'endless', groupId: btn.dataset.groupId, includeSubgroups: true });
+      }
     });
   });
 

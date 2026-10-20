@@ -102,34 +102,9 @@ export class CardEditorModal {
                 <div class="form-group">
                   <label class="form-label" for="input-cloze-text">Cloze Text</label>
                   <textarea class="form-input form-textarea" id="input-cloze-text" rows="4" placeholder="Photosynthesis occurs in the {{c1::chloroplasts}} using {{c2::sunlight}}. Use {{c1::same number}} to group blanks together."></textarea>
-                </div>
-
-                <!-- Cloze Review Mode Options -->
-                <div class="form-group" style="margin-top: 10px;">
-                  <label class="form-label">Cloze Review Mode</label>
-                  <div class="occ-mode-selector-group">
-                    <label class="occ-mode-option">
-                      <input type="radio" name="input-cloze-mode" value="hide_all_guess_one" checked/>
-                      <div class="occ-mode-card">
-                        <span class="occ-mode-title">Hide All, Guess One</span>
-                        <span class="occ-mode-desc">All blanks are hidden [...]. Tests one cloze number at a time (Card 1 tests c1, Card 2 tests c2).</span>
-                      </div>
-                    </label>
-                    <label class="occ-mode-option">
-                      <input type="radio" name="input-cloze-mode" value="hide_all_guess_all"/>
-                      <div class="occ-mode-card">
-                        <span class="occ-mode-title">Hide All, Guess All</span>
-                        <span class="occ-mode-desc">All blanks are hidden at once on a single card. Recall all missing words together.</span>
-                      </div>
-                    </label>
-                    <label class="occ-mode-option">
-                      <input type="radio" name="input-cloze-mode" value="hide_one_guess_one"/>
-                      <div class="occ-mode-card">
-                        <span class="occ-mode-title">Hide One, Guess One</span>
-                        <span class="occ-mode-desc">Only the tested blank is hidden; other blanks remain visible as context hints.</span>
-                      </div>
-                    </label>
-                  </div>
+                  <span class="form-helper" style="display: block; margin-top: 5px; font-size: 0.78rem; color: var(--text-muted);">
+                    💡 Each cloze number (c1, c2, c3...) creates a separate card. Blanks with the same number (e.g. c1) are tested together while all other blanks remain visible.
+                  </span>
                 </div>
 
                 <div class="form-group">
@@ -555,10 +530,6 @@ export class CardEditorModal {
     const occRadio = this.modalEl.querySelector(`input[name="input-occ-mode"][value="${occMode}"]`);
     if (occRadio) occRadio.checked = true;
 
-    const clozeMode = sanitized.clozeMode || 'hide_all_guess_one';
-    const clozeRadio = this.modalEl.querySelector(`input[name="input-cloze-mode"][value="${clozeMode}"]`);
-    if (clozeRadio) clozeRadio.checked = true;
-
     // Populate attached images
     if (Array.isArray(sanitized.images) && sanitized.images.length > 0) {
       this.attachedImages = sanitized.images.map((img, idx) => ({
@@ -597,8 +568,6 @@ export class CardEditorModal {
     }
     const defaultOccRadio = this.modalEl.querySelector('input[name="input-occ-mode"][value="hide_all_guess_one"]');
     if (defaultOccRadio) defaultOccRadio.checked = true;
-    const defaultClozeRadio = this.modalEl.querySelector('input[name="input-cloze-mode"][value="hide_all_guess_one"]');
-    if (defaultClozeRadio) defaultClozeRadio.checked = true;
     this.attachedImages = [];
     this._renderImageChips();
     this.modalEl.querySelector('#occlusion-editor-container').classList.add('hidden');
@@ -943,7 +912,7 @@ export class CardEditorModal {
     let imageUrl = '';
     let imageOcclusions = [];
 
-    let clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
+    let clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
 
     if (this.activeType === CARD_TYPES.BASIC || this.activeType === CARD_TYPES.REVERSIBLE) {
       front = this.modalEl.querySelector('#input-card-front').value.trim();
@@ -960,8 +929,7 @@ export class CardEditorModal {
         alert('Please enter text for the cloze card.');
         return false;
       }
-      const clozeRadio = this.modalEl.querySelector('input[name="input-cloze-mode"]:checked');
-      if (clozeRadio) clozeMode = clozeRadio.value;
+      clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
     } else if (this.activeType === CARD_TYPES.IMAGE) {
       front = this.modalEl.querySelector('#input-image-front').value.trim();
       back = this.modalEl.querySelector('#input-image-back').value.trim();

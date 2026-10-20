@@ -382,27 +382,17 @@ export class StudyView {
 
   _renderCardFrontContent(card) {
     if (card.type === CARD_TYPES.CLOZE) {
-      const mode = card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
       const targetClozeNum = card.targetClozeNum !== undefined ? card.targetClozeNum : (this.session.targetClozeNum || 1);
       const clozeNums = getClozeNumbers(card.clozeText || card.front);
       const totalClozes = clozeNums.length;
 
-      let modeDescription = 'Recall the missing term in [ ... ]';
-      if (mode === OCCLUSION_MODES.HIDE_ALL_GUESS_ALL) {
-        modeDescription = 'Recall all hidden blanks in the passage';
-      } else if (mode === OCCLUSION_MODES.HIDE_ONE_GUESS_ONE) {
-        modeDescription = 'Only the target blank is hidden. Use surrounding text as context!';
-      } else if (mode === OCCLUSION_MODES.HIDE_ALL_GUESS_ONE) {
-        modeDescription = 'All blanks are covered. Identify the active target [ ? ... ]';
-      }
-
-      const masked = renderClozeText(card.clozeText || card.front, false, targetClozeNum, mode);
+      const masked = renderClozeText(card.clozeText || card.front, false, targetClozeNum);
       return `
         <div class="cloze-prompt-box">
           <p class="study-text cloze-text">${masked}</p>
           <p class="study-hint-note" style="margin-top: 1.25rem;">
-            ${modeDescription}
-            ${(mode !== OCCLUSION_MODES.HIDE_ALL_GUESS_ALL && totalClozes > 1) ? `
+            Recall the missing term in [ ... ]
+            ${(totalClozes > 1) ? `
               <span style="display: block; margin-top: 4px; font-weight: 600; color: var(--primary);">
                 Testing Blank c${targetClozeNum} (${clozeNums.indexOf(targetClozeNum) + 1} of ${totalClozes})
               </span>
@@ -487,9 +477,8 @@ export class StudyView {
 
   _renderCardBackContent(card) {
     if (card.type === CARD_TYPES.CLOZE) {
-      const mode = card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
       const targetClozeNum = card.targetClozeNum !== undefined ? card.targetClozeNum : (this.session.targetClozeNum || 1);
-      const revealed = renderClozeText(card.clozeText || card.front, true, targetClozeNum, mode);
+      const revealed = renderClozeText(card.clozeText || card.front, true, targetClozeNum);
       return `
         <div class="cloze-answer-box">
           <p class="study-text cloze-text">${revealed}</p>

@@ -50,7 +50,7 @@ export function createCard(data = {}) {
     back: data.back || '',
     hint: data.hint || '',
     clozeText: data.clozeText || '',
-    clozeMode: data.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+    clozeMode: OCCLUSION_MODES.HIDE_ONE_GUESS_ONE,
     clozeSrs: data.clozeSrs ? { ...data.clozeSrs } : {},
     imageUrl: data.imageUrl || (rawImages[0]?.url || ''),
     images: rawImages,
@@ -178,7 +178,7 @@ export function getClozeNumbers(clozeText) {
  * @param {string} mode 
  * @returns {string} HTML string
  */
-export function renderClozeText(rawText, isRevealed = false, targetNum = 1, mode = 'hide_all_guess_one') {
+export function renderClozeText(rawText, isRevealed = false, targetNum = 1) {
   if (!rawText) return '';
 
   return rawText.replace(/\{\{c(\d+)::([^}]+?)\}\}/g, (match, numStr, inner) => {
@@ -189,34 +189,15 @@ export function renderClozeText(rawText, isRevealed = false, targetNum = 1, mode
     const answer = parts[0];
     const hint = parts[1] || '';
 
-    if (mode === OCCLUSION_MODES.HIDE_ALL_GUESS_ALL) {
-      if (isRevealed) {
-        return `<mark class="cloze-revealed">${escapeHtml(answer)}</mark>`;
-      }
-      return `<span class="cloze-masked">[ ${hint ? escapeHtml(hint) : '...'} ]</span>`;
-    }
-
-    if (mode === OCCLUSION_MODES.HIDE_ONE_GUESS_ONE) {
-      if (isTarget) {
-        if (isRevealed) {
-          return `<mark class="cloze-revealed">${escapeHtml(answer)}</mark>`;
-        }
-        return `<span class="cloze-masked target-cloze">[ ${hint ? escapeHtml(hint) : '...'} ]</span>`;
-      }
-      // Non-target: plain text for surrounding context
-      return escapeHtml(answer);
-    }
-
-    // Default: 'hide_all_guess_one'
     if (isTarget) {
       if (isRevealed) {
         return `<mark class="cloze-revealed target-cloze">${escapeHtml(answer)}</mark>`;
       }
-      return `<span class="cloze-masked target-cloze">[ ${hint ? escapeHtml(hint) : '? ...'} ]</span>`;
-    } else {
-      // Non-target stays masked
-      return `<span class="cloze-masked other-cloze">[ ... ]</span>`;
+      return `<span class="cloze-masked target-cloze">[ ${hint ? escapeHtml(hint) : '...'} ]</span>`;
     }
+
+    // Non-target: plain text for surrounding context - all other clozes are shown!
+    return escapeHtml(answer);
   });
 }
 
@@ -264,9 +245,8 @@ export function getReviewItemsForCard(card) {
   if (card.type === CARD_TYPES.CLOZE) {
     const clozeText = card.clozeText || card.front || '';
     const uniqueNums = getClozeNumbers(clozeText);
-    const mode = card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
 
-    if (mode !== OCCLUSION_MODES.HIDE_ALL_GUESS_ALL && uniqueNums.length > 1) {
+    if (uniqueNums.length > 1) {
       return uniqueNums.map(num => {
         const clozeSrs = (card.clozeSrs && card.clozeSrs[`c${num}`]) || card.srs || DEFAULT_SRS_DATA;
         return {
@@ -342,11 +322,7 @@ export function getCardCount(card) {
 
   if (card.type === CARD_TYPES.CLOZE) {
     const uniqueNums = getClozeNumbers(card.clozeText || card.front);
-    const mode = card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
-    if (mode !== OCCLUSION_MODES.HIDE_ALL_GUESS_ALL && uniqueNums.length > 1) {
-      return uniqueNums.length;
-    }
-    return 1;
+    return uniqueNums.length > 1 ? uniqueNums.length : 1;
   }
 
   if (card.type === CARD_TYPES.REVERSIBLE) {
@@ -381,13 +357,15 @@ export function getDueCountForCard(card, targetDate = getDateString()) {
 
   if (card.type === CARD_TYPES.CLOZE) {
     const uniqueNums = getClozeNumbers(card.clozeText || card.front);
-    const mode = card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
-    if (mode !== OCCLUSION_MODES.HIDE_ALL_GUESS_ALL && uniqueNums.length > 1) {
+    if (uniqueNums.length > 1) {
       return uniqueNums.filter(num => {
         const clozeSrs = (card.clozeSrs && card.clozeSrs[`c${num}`]) || card.srs || DEFAULT_SRS_DATA;
         return isCardDue({ srs: clozeSrs }, targetDate);
       }).length;
     }
+    const targetNum = uniqueNums[0] || 1;
+    const clozeSrs = (card.clozeSrs && card.clozeSrs[`c${targetNum}`]) || card.srs || DEFAULT_SRS_DATA;
+    return isCardDue({ srs: clozeSrs }, targetDate) ? 1 : 0;
   }
 
   if (card.type === CARD_TYPES.REVERSIBLE) {

@@ -408,7 +408,7 @@ export function analyzeCardTypeAndContent(frontRaw, backRaw = '') {
   let back = (backRaw || '').trim();
   let type = CARD_TYPES.BASIC;
   let clozeText = '';
-  let clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
+  let clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
 
   // 1. Remove Markdown code block backticks if present
   front = front.replace(/^`{1,3}|`{1,3}$/g, '').trim();
@@ -426,7 +426,7 @@ export function analyzeCardTypeAndContent(frontRaw, backRaw = '') {
 
   if (clozeAllRegex.test(front) || clozeAllRegex.test(back)) {
     type = CARD_TYPES.CLOZE;
-    clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ALL;
+    clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
     front = front.replace(clozeAllRegex, '').trim();
     back = back.replace(clozeAllRegex, '').trim();
   } else if (clozeContextRegex.test(front) || clozeContextRegex.test(back)) {
@@ -436,7 +436,7 @@ export function analyzeCardTypeAndContent(frontRaw, backRaw = '') {
     back = back.replace(clozeContextRegex, '').trim();
   } else if (clozeStandardRegex.test(front) || clozeStandardRegex.test(back)) {
     type = CARD_TYPES.CLOZE;
-    clozeMode = OCCLUSION_MODES.HIDE_ALL_GUESS_ONE;
+    clozeMode = OCCLUSION_MODES.HIDE_ONE_GUESS_ONE;
     front = front.replace(clozeStandardRegex, '').trim();
     back = back.replace(clozeStandardRegex, '').trim();
   }
@@ -931,7 +931,7 @@ export function parseAnki(text) {
           tags: [...rawTags, 'anki-cloze'],
           type: CARD_TYPES.CLOZE,
           clozeText: clozeText,
-          clozeMode: OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+          clozeMode: OCCLUSION_MODES.HIDE_ONE_GUESS_ONE,
           sourceLine: lineNum
         });
         continue;
@@ -949,7 +949,7 @@ export function parseAnki(text) {
         tags: [...rawTags, 'anki-cloze'],
         type: CARD_TYPES.CLOZE,
         clozeText: analyzed.clozeText || clozeField1,
-        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ONE_GUESS_ONE,
         sourceLine: lineNum
       });
       continue;
@@ -1083,7 +1083,7 @@ export function parseRemNote(text) {
         tags: ['remnote'],
         type: CARD_TYPES.CLOZE,
         clozeText: analyzed.clozeText || cloze.replace(/^[-*•]\s*/, ''),
-        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+        clozeMode: analyzed.clozeMode || OCCLUSION_MODES.HIDE_ONE_GUESS_ONE,
         sourceLine: lineNum
       });
       continue;

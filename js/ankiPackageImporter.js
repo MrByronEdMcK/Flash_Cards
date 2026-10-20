@@ -538,7 +538,7 @@ export async function parseAnkiPackageNative(fileInput, onProgress = null) {
         front: frontLabel,
         back: backImgRes.cleanText,
         clozeText: clozeImgRes.cleanText,
-        clozeMode: 'hide_all_guess_one',
+        clozeMode: 'hide_one_guess_one',
         imageUrl: cardImages[0]?.url || '',
         images: cardImages,
         imageSide: cardImages[0]?.side || 'back',

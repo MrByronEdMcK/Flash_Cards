@@ -517,15 +517,20 @@ class StorageService {
                           (c.back && typeof c.back === 'string' && c.back.includes('<img')) || 
                           (c.clozeText && typeof c.clozeText === 'string' && c.clozeText.includes('<img'));
         const needsImageInit = c.imageUrl && (!Array.isArray(c.images) || c.images.length === 0);
+        const isCloze = c.type === 'cloze' || (c.clozeText && c.clozeText.trim().length > 0);
+        const needsClozeMigration = isCloze && c.clozeMode !== 'hide_one_guess_one';
 
-        if (hasImgTag || needsImageInit) {
+        if (hasImgTag || needsImageInit || needsClozeMigration) {
           const cleaned = sanitizeCardImages({ ...c });
+          if (needsClozeMigration) {
+            cleaned.clozeMode = 'hide_one_guess_one';
+          }
           await this.saveCard(cleaned);
           updatedCount++;
         }
       }
       if (updatedCount > 0) {
-        console.log(`[Storage] Auto-sanitized ${updatedCount} cards containing attached images.`);
+        console.log(`[Storage] Auto-sanitized ${updatedCount} cards containing attached images or updated cloze settings.`);
       }
     } catch (err) {
       console.warn('[Storage] Error during card image sanitization:', err);

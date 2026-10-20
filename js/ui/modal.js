@@ -1063,8 +1063,7 @@ export class ModalManager {
       samplesContent.innerHTML = samples.map((c, i) => {
         let typeBadge = '';
         if (c.type === CARD_TYPES.CLOZE) {
-          const modeLbl = c.clozeMode === OCCLUSION_MODES.HIDE_ALL_GUESS_ALL ? 'Guess All' : (c.clozeMode === OCCLUSION_MODES.HIDE_ONE_GUESS_ONE ? 'Context' : 'Guess One');
-          typeBadge = `<span class="type-tag-badge cloze" style="font-size:0.68rem; margin-left:auto;">Cloze (${modeLbl})</span>`;
+          typeBadge = `<span class="type-tag-badge cloze" style="font-size:0.68rem; margin-left:auto;">Cloze</span>`;
         } else if (c.type === CARD_TYPES.REVERSIBLE) {
           typeBadge = `<span class="type-tag-badge reversible" style="font-size:0.68rem; margin-left:auto;">Reversible</span>`;
         } else {
@@ -1146,7 +1145,7 @@ export class ModalManager {
               hint: card.hint || '',
               type: card.type || CARD_TYPES.BASIC,
               clozeText: card.clozeText || (card.type === CARD_TYPES.CLOZE ? card.front : ''),
-              clozeMode: card.clozeMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,
+              clozeMode: card.clozeMode || OCCLUSION_MODES.HIDE_ONE_GUESS_ONE,
               imageUrl: card.imageUrl || '',
               imageOcclusions: Array.isArray(card.imageOcclusions) ? card.imageOcclusions : [],
               occlusionMode: card.occlusionMode || OCCLUSION_MODES.HIDE_ALL_GUESS_ONE,

@@ -259,11 +259,10 @@ export function isCardDue(card, targetDate = getDateString()) {
     });
   }
 
-  // If this is a parent cloze card with multiple deletions in guess-one mode
+  // If this is a parent cloze card with multiple deletions
   if (
     card.type === 'cloze' &&
-    card.targetClozeNum === undefined &&
-    card.clozeMode !== 'hide_all_guess_all'
+    card.targetClozeNum === undefined
   ) {
     const clozeText = card.clozeText || card.front || '';
     const matches = [...clozeText.matchAll(/\{\{c(\d+)::/g)].map(m => parseInt(m[1], 10));
